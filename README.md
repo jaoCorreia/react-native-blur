@@ -40,7 +40,7 @@ C++ (blur-core)
 - **Multithreaded** - custom thread pool distributes rows/columns across all CPU cores
 - **Zero-copy** - operates directly on Android Bitmap pixel buffers (no intermediate copies)
 - **Consistent across all Android versions** (API 21+) - no RenderScript, no API level restrictions
-- **GoogleTest** unit tests (18 tests) + **Google Benchmark** performance tracking
+- **GoogleTest** unit tests (29 tests) + **Google Benchmark** performance tracking
 - **AddressSanitizer** validated (zero memory errors)
 - **CI/CD** with GitHub Actions on every push
 
@@ -98,10 +98,28 @@ cmake --build build
 ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build
 ```
 
-### Build Android
+### Use blur-core standalone (CMake)
+
+`blur-core` has no React Native or Android dependency, so it can be installed and consumed by any CMake project via `find_package`, independent of this repo's RN/Gradle build:
 
 ```bash
-cd android && ./gradlew assembleRelease
+cmake -B build -S blur-core -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+cmake --install build --prefix /path/to/install
+```
+
+```cmake
+# In a consumer's CMakeLists.txt
+find_package(blur-core REQUIRED)
+target_link_libraries(your-target PRIVATE blur::blur-core)
+```
+
+### Build Android
+
+There's no committed Gradle wrapper in this repo, so use a Gradle install compatible with AGP 8.2 (CI pins 8.4):
+
+```bash
+gradle -p android assembleRelease
 ```
 
 ### Run Android instrumentation tests
@@ -120,7 +138,7 @@ The library automatically selects the fastest algorithm:
 | > 5 | Box Blur 3-pass | O(N), **radius-independent** | Auto, loss < 3% |
 | ≥ 8 | Downscale 2x/4x + Blur | O(N/4) | Reduces pixel count |
 
-### Benchmarks (x86\_64, 16 threads, AVX2)
+### Benchmarks (x86\_64, 4-core, AVX2)
 
 | Resolution | Radius | Time | Method |
 |------------|--------|------|--------|
@@ -132,11 +150,11 @@ The library automatically selects the fastest algorithm:
 | 2048x2048 | 8 | **0.95ms** | Box 3-pass + AVX2 |
 | 4096x4096 | 8 | **4.07ms** | Box 3-pass + AVX2 |
 
-*Measured on GitHub Actions ubuntu-latest (x86\_64, 16 threads). ARM64 (Pixel 7) is ~1.8x faster with NEON.*
+*Measured on GitHub Actions ubuntu-latest (x86\_64, 4-core shared runner — noisy, treat as approximate). ARM64 (Pixel 7) is ~1.8x faster with NEON.*
 
 ### Speedup from v1.0 (first release)
 
-| Resolution | Radius | v1.0 | v1.4.2 | Speedup |
+| Resolution | Radius | v1.0 | v1.4.3 | Speedup |
 |------------|--------|------|--------|---------|
 | 512x512 | 10 | 4.68ms | 0.05ms | **94x** |
 | 1024x1024 | 15 | 24.2ms | 0.17ms | **142x** |
@@ -201,9 +219,10 @@ On every push and PR:
 1. **C++ Unit Tests** (Debug + Release) — 29 tests
 2. **C++ Benchmarks**
 3. **Address Sanitizer** (memory safety)
-4. **aarch64 QEMU** — cross-compiles + runs full test suite for NEON path
-5. **Android Gradle Build** — compiles Kotlin + cross-compiles blur-core for all 4 ABIs via NDK
-6. **TypeScript Type Check**
+4. **CMake install() / find_package()** — installs the package to a throwaway prefix and builds/runs a standalone consumer against it
+5. **aarch64 QEMU** — cross-compiles + runs full test suite for NEON path
+6. **Android Gradle Build** — compiles Kotlin + cross-compiles blur-core for all 4 ABIs via NDK
+7. **TypeScript Type Check**
 
 All jobs run in parallel. The NEON path is compiled and tested on every commit.
 
