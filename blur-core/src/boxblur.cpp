@@ -1,4 +1,5 @@
 #include "boxblur.h"
+#include "pool.h"
 #include "thread_pool.h"
 #include <algorithm>
 #include <vector>
@@ -99,32 +100,14 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
 
 void boxBlur1D(const Bitmap& src, Bitmap& dst, int radius) {
     ThreadPool& pool = ThreadPool::instance();
-    int numThreads = pool.threadCount();
 
-    std::vector<std::future<void>> futures;
+    pool.parallelFor(src.height, 1, [&](int startRow, int endRow) {
+        boxBlurHorizontal(src, dst, radius, startRow, endRow);
+    });
 
-    int rowsPerThread = (src.height + numThreads - 1) / numThreads;
-    for (int t = 0; t < numThreads; ++t) {
-        int startRow = t * rowsPerThread;
-        int endRow = std::min(startRow + rowsPerThread, src.height);
-        if (startRow >= endRow) break;
-        futures.emplace_back(pool.enqueue([&, startRow, endRow]() {
-            boxBlurHorizontal(src, dst, radius, startRow, endRow);
-        }));
-    }
-    for (auto& f : futures) f.get();
-    futures.clear();
-
-    int colsPerThread = (src.width + numThreads - 1) / numThreads;
-    for (int t = 0; t < numThreads; ++t) {
-        int startCol = t * colsPerThread;
-        int endCol = std::min(startCol + colsPerThread, src.width);
-        if (startCol >= endCol) break;
-        futures.emplace_back(pool.enqueue([&, startCol, endCol]() {
-            boxBlurVertical(src, dst, radius, startCol, endCol);
-        }));
-    }
-    for (auto& f : futures) f.get();
+    pool.parallelFor(src.width, 1, [&](int startCol, int endCol) {
+        boxBlurVertical(src, dst, radius, startCol, endCol);
+    });
 }
 
 void boxBlur3Pass(Bitmap& bitmap, int gaussianRadius) {
@@ -137,9 +120,9 @@ void boxBlur3Pass(Bitmap& bitmap, int gaussianRadius) {
     int h = bitmap.height;
     int ch = bitmap.channels;
 
-    std::vector<uint8_t> tempBuffer(static_cast<size_t>(w) * h * ch);
+    ScopedBuffer tempBuffer(static_cast<size_t>(w) * h * ch);
     Bitmap temp;
-    temp.pixels = tempBuffer.data();
+    temp.pixels = tempBuffer.get();
     temp.width = w;
     temp.height = h;
     temp.stride = w * ch;

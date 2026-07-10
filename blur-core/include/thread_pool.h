@@ -23,6 +23,9 @@ public:
 
     int threadCount() const;
 
+    void parallelFor(int total, int chunkSize,
+                     const std::function<void(int, int)>& fn);
+
     ~ThreadPool();
 
     ThreadPool(const ThreadPool&) = delete;

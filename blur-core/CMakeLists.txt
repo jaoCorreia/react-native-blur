@@ -15,6 +15,7 @@ set(BLUR_CORE_SOURCES
     src/boxblur.cpp
     src/scale.cpp
     src/cache.cpp
+    src/pool.cpp
     src/thread_pool.cpp
 )
 

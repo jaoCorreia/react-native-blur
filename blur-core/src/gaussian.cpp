@@ -3,6 +3,7 @@
 #include "scale.h"
 #include "cache.h"
 #include "boxblur.h"
+#include "pool.h"
 #include "thread_pool.h"
 #include <cstring>
 #include <algorithm>
@@ -80,58 +81,28 @@ void blurHorizontal(const Bitmap& src, Bitmap& dst,
                     const std::vector<float>& kernel, int radius) {
     ThreadPool& pool = ThreadPool::instance();
     int height = src.height;
-    int numThreads = pool.threadCount();
-    int rowsPerThread = (height + numThreads - 1) / numThreads;
 
-    std::vector<std::future<void>> futures;
-    futures.reserve(static_cast<size_t>(numThreads));
-
-    for (int t = 0; t < numThreads; ++t) {
-        int startRow = t * rowsPerThread;
-        int endRow = std::min(startRow + rowsPerThread, height);
-        if (startRow >= endRow) break;
-
-        futures.emplace_back(pool.enqueue([&, startRow, endRow]() {
+    pool.parallelFor(height, 1, [&](int startRow, int endRow) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
-            blurHorizontalNEON(src, dst, kernel, radius, startRow, endRow);
+        blurHorizontalNEON(src, dst, kernel, radius, startRow, endRow);
 #else
-            blurHorizontalScalar(src, dst, kernel, radius, startRow, endRow);
+        blurHorizontalScalar(src, dst, kernel, radius, startRow, endRow);
 #endif
-        }));
-    }
-
-    for (auto& f : futures) {
-        f.get();
-    }
+    });
 }
 
 void blurVertical(const Bitmap& src, Bitmap& dst,
                   const std::vector<float>& kernel, int radius) {
     ThreadPool& pool = ThreadPool::instance();
     int width = src.width;
-    int numThreads = pool.threadCount();
-    int colsPerThread = (width + numThreads - 1) / numThreads;
 
-    std::vector<std::future<void>> futures;
-    futures.reserve(static_cast<size_t>(numThreads));
-
-    for (int t = 0; t < numThreads; ++t) {
-        int startCol = t * colsPerThread;
-        int endCol = std::min(startCol + colsPerThread, width);
-        if (startCol >= endCol) break;
-
-        futures.emplace_back(pool.enqueue([&, startCol, endCol]() {
+    pool.parallelFor(width, 1, [&](int startCol, int endCol) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
-            blurVerticalNEON(src, dst, kernel, radius, startCol, endCol);
+        blurVerticalNEON(src, dst, kernel, radius, startCol, endCol);
 #else
-            blurVerticalScalar(src, dst, kernel, radius, startCol, endCol);
+        blurVerticalScalar(src, dst, kernel, radius, startCol, endCol);
 #endif
-        }));
-    }
-
-    for (auto& f : futures) {
-        f.get();
-    }
+    });
 }
 
 void gaussianBlur(Bitmap& bitmap, int radius, float sigma) {
@@ -181,12 +152,12 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
         int height = bitmap.height;
         int channels = bitmap.channels;
 
-        std::vector<uint8_t> tempBuffer(
+        ScopedBuffer tempBuffer(
             static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels)
         );
 
         Bitmap temp;
-        temp.pixels = tempBuffer.data();
+        temp.pixels = tempBuffer.get();
         temp.width = width;
         temp.height = height;
         temp.stride = width * channels;
@@ -202,12 +173,12 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
     int dh = bitmap.height / scale;
     int ch = bitmap.channels;
 
-    std::vector<uint8_t> scaledBuffer(
+    ScopedBuffer scaledBuffer(
         static_cast<size_t>(dw) * static_cast<size_t>(dh) * static_cast<size_t>(ch)
     );
 
     Bitmap scaled;
-    scaled.pixels = scaledBuffer.data();
+    scaled.pixels = scaledBuffer.get();
     scaled.width = dw;
     scaled.height = dh;
     scaled.stride = dw * ch;
@@ -216,11 +187,11 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
     downscale2x(bitmap, scaled);
 
     if (scale >= 4) {
-        std::vector<uint8_t> scaled2Buffer(
+        ScopedBuffer scaled2Buffer(
             static_cast<size_t>(dw / 2) * static_cast<size_t>(dh / 2) * static_cast<size_t>(ch)
         );
         Bitmap scaled2;
-        scaled2.pixels = scaled2Buffer.data();
+        scaled2.pixels = scaled2Buffer.get();
         scaled2.width = dw / 2;
         scaled2.height = dh / 2;
         scaled2.stride = (dw / 2) * ch;
@@ -231,11 +202,11 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
         auto kernel = generateGaussianKernel(options.radius / scale, options.sigma);
         int scaledRadius = std::max(1, options.radius / scale);
 
-        std::vector<uint8_t> tempBuffer(
+        ScopedBuffer tempBuffer(
             static_cast<size_t>(scaled2.width) * static_cast<size_t>(scaled2.height) * static_cast<size_t>(ch)
         );
         Bitmap temp;
-        temp.pixels = tempBuffer.data();
+        temp.pixels = tempBuffer.get();
         temp.width = scaled2.width;
         temp.height = scaled2.height;
         temp.stride = scaled2.width * ch;
@@ -250,11 +221,11 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
         auto kernel = generateGaussianKernel(options.radius / scale, options.sigma);
         int scaledRadius = std::max(1, options.radius / scale);
 
-        std::vector<uint8_t> tempBuffer(
+        ScopedBuffer tempBuffer(
             static_cast<size_t>(dw) * static_cast<size_t>(dh) * static_cast<size_t>(ch)
         );
         Bitmap temp;
-        temp.pixels = tempBuffer.data();
+        temp.pixels = tempBuffer.get();
         temp.width = dw;
         temp.height = dh;
         temp.stride = dw * ch;
