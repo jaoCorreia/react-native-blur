@@ -4,7 +4,7 @@ project(react-native-blur-android LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(BLUR_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../blur-core")
+set(BLUR_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../blur-core")
 
 add_subdirectory("${BLUR_CORE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/blur-core")
 

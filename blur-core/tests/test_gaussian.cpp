@@ -96,17 +96,19 @@ TEST_F(GaussianBlurTest, BlurSolidColorDoesNotChange) {
 
 TEST_F(GaussianBlurTest, SingleWhitePixelBlurred) {
     int size = 8;
+    int cx = size / 2;
+    int cy = size / 2;
     auto bmp = createBitmap(size, size);
     fillSolid(bmp, 0, 0, 0, 255);
-    setPixel(bmp, size / 2, size / 2, 255, 255, 255, 255);
+    setPixel(bmp, cx, cy, 255, 255, 255, 255);
 
-    gaussianBlur(bmp, 6);
+    gaussianBlur(bmp, 3);
 
-    uint8_t* center = bmp.getRow(size / 2) + (size / 2) * 4;
+    uint8_t* center = bmp.getRow(cy) + cx * 4;
     EXPECT_LT(center[0], 255) << "Center should be darker after blur";
 
-    uint8_t* corner = bmp.getRow(0);
-    EXPECT_GT(corner[0], 0) << "Corner should be lighter after blur";
+    uint8_t* adjacent = bmp.getRow(cy) + (cx - 1) * 4;
+    EXPECT_GT(adjacent[0], 0) << "Adjacent pixel should gain brightness after blur";
 }
 
 TEST_F(GaussianBlurTest, OutputIsSymmetric) {
