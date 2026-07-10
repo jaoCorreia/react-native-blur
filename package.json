@@ -1,0 +1,59 @@
+{
+  "name": "react-native-blur",
+  "version": "1.0.0",
+  "description": "High-performance cross-platform Gaussian blur for React Native with C++/NEON SIMD optimizations",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src/",
+    "android/",
+    "blur-core/",
+    "react-native-blur.podspec",
+    "react-native.config.js",
+    "tsconfig.json"
+  ],
+  "keywords": [
+    "react-native",
+    "blur",
+    "gaussian-blur",
+    "glassmorphism",
+    "fabric",
+    "turbomodule",
+    "cpp",
+    "neon",
+    "simd",
+    "performance",
+    "cross-platform"
+  ],
+  "license": "MIT",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/react-native-blur"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.72.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "^5.3.0",
+    "react": "^18.2.0",
+    "react-native": "^0.73.0"
+  },
+  "codegenConfig": {
+    "name": "RNBlurSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.blur"
+    }
+  },
+  "scripts": {
+    "example": "cd example && npx react-native run-android",
+    "test:cpp": "cd blur-core && mkdir -p build && cd build && cmake .. -DBLUR_BUILD_TESTS=ON && cmake --build . && ctest --output-on-failure",
+    "benchmark": "cd blur-core && mkdir -p build && cd build && cmake .. -DBLUR_BUILD_BENCHMARKS=ON && cmake --build . && ./blur-bench",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  }
+}

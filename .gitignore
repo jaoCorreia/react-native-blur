@@ -1,0 +1,41 @@
+node_modules/
+lib/
+.gradle/
+build/
+*.apk
+*.aab
+*.aar
+*.so
+*.dSYM/
+*.hmap
+*.ipa
+*.xcworkspace
+*.xcuserdata
+.xcodebuild/
+Pods/
+DerivedData/
+
+# Android
+android/.cxx/
+android/build/
+android/.gradle/
+local.properties
+
+# C++ build
+blur-core/build/
+blur-core/cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
