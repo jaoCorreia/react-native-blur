@@ -12,6 +12,7 @@ option(BLUR_BUILD_BENCHMARKS "Build performance benchmarks" OFF)
 set(BLUR_CORE_SOURCES
     src/kernel.cpp
     src/gaussian.cpp
+    src/boxblur.cpp
     src/scale.cpp
     src/cache.cpp
     src/thread_pool.cpp

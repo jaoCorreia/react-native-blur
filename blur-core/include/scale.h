@@ -10,10 +10,17 @@ enum class ScaleMode {
     Auto = 1,
 };
 
+enum class BlurMethod {
+    Auto = 0,
+    Gaussian = 1,
+    Box3Pass = 2,
+};
+
 struct BlurOptions {
     int radius = 0;
     float sigma = -1.0f;
     ScaleMode scaleMode = ScaleMode::Auto;
+    BlurMethod method = BlurMethod::Auto;
 };
 
 void downscale2x(const Bitmap& src, Bitmap& dst);

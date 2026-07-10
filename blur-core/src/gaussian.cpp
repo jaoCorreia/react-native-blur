@@ -2,6 +2,7 @@
 #include "kernel.h"
 #include "scale.h"
 #include "cache.h"
+#include "boxblur.h"
 #include "thread_pool.h"
 #include <cstring>
 #include <algorithm>
@@ -157,6 +158,19 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
     std::vector<uint8_t> cached;
     if (BlurCache::instance().get(cacheKey, cached)) {
         std::memcpy(bitmap.pixels, cached.data(), bitmap.totalBytes());
+        return;
+    }
+
+    bool useBox = false;
+    if (options.method == BlurMethod::Box3Pass) {
+        useBox = true;
+    } else if (options.method == BlurMethod::Auto && options.radius > 5) {
+        useBox = true;
+    }
+
+    if (useBox) {
+        boxBlur3Pass(bitmap, options.radius);
+        BlurCache::instance().put(cacheKey, bitmap);
         return;
     }
 
