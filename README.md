@@ -1,4 +1,9 @@
-# react-native-blur
+# react-native-cpp-blur
+
+[![npm version](https://img.shields.io/npm/v/react-native-cpp-blur)](https://www.npmjs.com/package/react-native-cpp-blur)
+[![npm downloads](https://img.shields.io/npm/dm/react-native-cpp-blur)](https://www.npmjs.com/package/react-native-cpp-blur)
+[![CI](https://github.com/jaoCorreia/react-native-blur/actions/workflows/ci.yml/badge.svg)](https://github.com/jaoCorreia/react-native-blur/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/react-native-cpp-blur)](LICENSE)
 
 High-performance cross-platform Gaussian blur for React Native with C++/NEON SIMD optimizations.
 
@@ -42,7 +47,7 @@ C++ (blur-core)
 ## Installation
 
 ```bash
-npm install react-native-blur
+npm install react-native-cpp-blur
 ```
 
 ## Usage
@@ -50,7 +55,7 @@ npm install react-native-blur
 ### BlurView Component
 
 ```tsx
-import { BlurView } from 'react-native-blur';
+import { BlurView } from 'react-native-cpp-blur';
 
 function App() {
   return (
@@ -64,7 +69,7 @@ function App() {
 ### Programmatic Blur
 
 ```tsx
-import { NativeBlur } from 'react-native-blur';
+import { NativeBlur } from 'react-native-cpp-blur';
 
 await NativeBlur.blurImage('/path/to/input.png', '/path/to/output.png', 10, 2.5);
 ```
