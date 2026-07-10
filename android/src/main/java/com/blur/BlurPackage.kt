@@ -16,6 +16,6 @@ class BlurPackage : ReactPackage {
     override fun createViewManagers(
         reactContext: ReactApplicationContext
     ): List<ViewManager<*, *>> {
-        return listOf(BlurViewManager(reactContext))
+        return listOf(BlurViewManager())
     }
 }

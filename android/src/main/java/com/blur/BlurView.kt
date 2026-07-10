@@ -53,6 +53,9 @@ class BlurView(context: Context) : FrameLayout(context) {
 
     override fun dispatchDraw(canvas: Canvas) {
         if (blurRadius <= 0f || width <= 0 || height <= 0) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setRenderEffect(null)
+            }
             super.dispatchDraw(canvas)
             return
         }
@@ -75,25 +78,22 @@ class BlurView(context: Context) : FrameLayout(context) {
         super.dispatchDraw(canvas)
     }
 
+    // RenderEffect (API 31+) applies to a View's composited output, not to a
+    // Paint — it's set on this View itself so the raw (unblurred) bitmap
+    // drawn below gets blurred by the GPU at composition time.
     private fun drawWithRenderEffect(canvas: Canvas) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val effect = RenderEffect.createBlurEffect(
-                blurRadius,
-                blurRadius,
-                Shader.TileMode.CLAMP
-            )
-            backgroundPaint.setRenderEffect(effect)
-        }
-
-        cachedBitmap?.let {
-            canvas.drawBitmap(it, 0f, 0f, backgroundPaint)
-            backgroundPaint.setRenderEffect(null)
-        }
+        val effect = RenderEffect.createBlurEffect(
+            blurRadius,
+            blurRadius,
+            Shader.TileMode.CLAMP
+        )
+        setRenderEffect(effect)
+        drawWithCachedBitmap(canvas)
     }
 
     private fun drawWithCachedBitmap(canvas: Canvas) {
         cachedBitmap?.let {
-            canvas.drawBitmap(it, 0f, 0f, null)
+            canvas.drawBitmap(it, 0f, 0f, backgroundPaint)
         }
     }
 
