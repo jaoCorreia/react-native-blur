@@ -109,7 +109,7 @@ cd android && ./gradlew connectedAndroidTest
 
 ### ARM64 NEON vs Scalar
 
-NEON (ARM Advanced SIMD) is **already implemented** and automatically enabled on ARM64/ARMv7 devices. The compiler detects the architecture at build time. On x86/x86\_64 devices, the scalar fallback is used.
+NEON is **always enabled** on ARM64/ARMv7. The inner loop uses fixed-point integer math (`vmlal_s16`, kernel `int16`) — no float conversions. Interior pixels are processed in **pairs** (2 pixels per kernel iteration, single `vld1_u8` load, zero clamping branches).
 
 | Resolution | Radius | Scalar C++ | NEON (ARM64) | Speedup |
 |------------|--------|-----------|-------------|---------|
@@ -196,8 +196,8 @@ All jobs run in parallel. The C++ core is fully validated on every commit.
 - [x] v1.1: NEON SIMD optimization (float)
 - [x] v1.2: Multithreaded processing
 - [x] v1.3: Unit tests + benchmarks + CI
-- [x] v2: Auto-downscaling (2x/4x based on radius), fixed-point NEON (int32 MAC)
-- [x] v2.1: Blur cache (skip recalculation on unchanged content)
+- [x] v2: Auto-downscaling (2x/4x), fixed-point NEON (int32 MAC), blur cache
+- [x] v2.1: NEON 4-wide (2 pixels/iteration, branchless interior)
 - [ ] v3: GPU backend (Vulkan / OpenGL ES)
 - [ ] v4: iOS support (Objective-C++ bridge)
 - [ ] v5: Progressive blur (multi-pass)
