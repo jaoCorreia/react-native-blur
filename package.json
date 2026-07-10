@@ -29,7 +29,11 @@
   "author": "jaoCorreia",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jaoCorreia/react-native-blur"
+    "url": "git+https://github.com/jaoCorreia/react-native-blur.git"
+  },
+  "homepage": "https://github.com/jaoCorreia/react-native-blur#readme",
+  "bugs": {
+    "url": "https://github.com/jaoCorreia/react-native-blur/issues"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
