@@ -1,5 +1,5 @@
 {
-  "name": "react-native-blur",
+  "name": "@jaocorreia/react-native-blur",
   "version": "1.0.0",
   "description": "High-performance cross-platform Gaussian blur for React Native with C++/NEON SIMD optimizations",
   "main": "src/index.ts",
@@ -12,6 +12,9 @@
     "react-native.config.js",
     "tsconfig.json"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "react-native",
     "blur",
@@ -26,10 +29,10 @@
     "cross-platform"
   ],
   "license": "MIT",
-  "author": "",
+  "author": "jaoCorreia",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/react-native-blur"
+    "url": "https://github.com/jaoCorreia/react-native-blur"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
