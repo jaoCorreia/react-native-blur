@@ -14,5 +14,3 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'react-native-blur'
-include ':blur'
-project(':blur').projectDir = file('.')

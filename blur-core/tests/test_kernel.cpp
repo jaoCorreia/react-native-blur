@@ -52,10 +52,12 @@ TEST(KernelTest, LargerSigmaProducesFlatterKernel) {
     auto kernelSmall = generateGaussianKernel(5, 1.0f);
     auto kernelLarge = generateGaussianKernel(5, 30.0f);
 
-    EXPECT_GT(kernelSmall[0], kernelLarge[0])
+    int center = 5;
+
+    EXPECT_GT(kernelSmall[center], kernelLarge[center])
         << "Small sigma should have larger center weight";
 
-    EXPECT_GT(kernelLarge[4], kernelSmall[4])
+    EXPECT_GT(kernelLarge[1], kernelSmall[1])
         << "Large sigma should have larger edge weight";
 }
 

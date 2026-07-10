@@ -95,7 +95,7 @@ TEST_F(GaussianBlurTest, BlurSolidColorDoesNotChange) {
 }
 
 TEST_F(GaussianBlurTest, SingleWhitePixelBlurred) {
-    int size = 32;
+    int size = 8;
     auto bmp = createBitmap(size, size);
     fillSolid(bmp, 0, 0, 0, 255);
     setPixel(bmp, size / 2, size / 2, 255, 255, 255, 255);
@@ -110,18 +110,21 @@ TEST_F(GaussianBlurTest, SingleWhitePixelBlurred) {
 }
 
 TEST_F(GaussianBlurTest, OutputIsSymmetric) {
-    int size = 16;
+    int size = 8;
+    int centerX = 4;
+    int centerY = 4;
     auto bmp = createBitmap(size, size);
     fillSolid(bmp, 0, 0, 0, 255);
-    setPixel(bmp, size / 2, size / 2, 255, 255, 255, 255);
+    setPixel(bmp, centerX, centerY, 255, 255, 255, 255);
 
     gaussianBlur(bmp, 3);
 
     for (int y = 0; y < size; ++y) {
         const uint8_t* row = bmp.getRowConst(y);
-        for (int x = 0; x < size / 2; ++x) {
+        for (int x = 0; x < centerX; ++x) {
+            int mirrorX = 2 * centerX - x;
             size_t offL = static_cast<size_t>(x) * 4;
-            size_t offR = static_cast<size_t>(size - 1 - x) * 4;
+            size_t offR = static_cast<size_t>(mirrorX) * 4;
             EXPECT_EQ(row[offL + 0], row[offR + 0])
                 << "Asymmetry at (" << x << "," << y << ")";
         }
@@ -170,8 +173,22 @@ TEST_F(GaussianBlurTest, DimensionsPreserved) {
 }
 
 TEST_F(GaussianBlurTest, LargerRadiusMoreBlur) {
-    auto bmp1 = createBitmap(32, 32);
-    auto bmp2 = createBitmap(32, 32);
+    std::vector<uint8_t> buf1(32 * 32 * 4, 0);
+    std::vector<uint8_t> buf2(32 * 32 * 4, 0);
+
+    Bitmap bmp1;
+    bmp1.pixels = buf1.data();
+    bmp1.width = 32;
+    bmp1.height = 32;
+    bmp1.stride = 32 * 4;
+    bmp1.channels = 4;
+
+    Bitmap bmp2;
+    bmp2.pixels = buf2.data();
+    bmp2.width = 32;
+    bmp2.height = 32;
+    bmp2.stride = 32 * 4;
+    bmp2.channels = 4;
 
     fillSolid(bmp1, 0, 0, 0, 255);
     fillSolid(bmp2, 0, 0, 0, 255);
