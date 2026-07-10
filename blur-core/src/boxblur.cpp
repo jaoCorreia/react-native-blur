@@ -6,7 +6,6 @@
 #include <future>
 #include <cmath>
 #include <cstring>
-#include <cstdio>
 
 namespace blur {
 
@@ -151,19 +150,8 @@ void boxBlur3Pass(Bitmap& bitmap, int gaussianRadius) {
     temp.channels = ch;
 
     boxBlur1D(bitmap, temp, boxRadius);
-    fprintf(stderr, "[diag] after pass1 (in temp), center=%d, center+3=%d\n",
-            temp.getRowConst(h/2)[static_cast<size_t>(w/2)*ch],
-            temp.getRowConst(h/2)[static_cast<size_t>(w/2+3)*ch]);
-
     boxBlur1D(temp, bitmap, boxRadius);
-    fprintf(stderr, "[diag] after pass2 (in bitmap), center=%d, center+3=%d\n",
-            bitmap.getRowConst(h/2)[static_cast<size_t>(w/2)*ch],
-            bitmap.getRowConst(h/2)[static_cast<size_t>(w/2+3)*ch]);
-
     boxBlur1D(bitmap, temp, boxRadius);
-    fprintf(stderr, "[diag] after pass3 (in temp), center=%d, center+3=%d\n",
-            temp.getRowConst(h/2)[static_cast<size_t>(w/2)*ch],
-            temp.getRowConst(h/2)[static_cast<size_t>(w/2+3)*ch]);
 
     std::memcpy(bitmap.pixels, temp.pixels, bitmap.totalBytes());
 }

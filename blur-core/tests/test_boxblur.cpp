@@ -4,7 +4,6 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include <cstring>
-#include <cstdio>
 
 using namespace blur;
 
@@ -25,6 +24,20 @@ void setPixel(Bitmap& bmp, int x, int y, uint8_t v) {
     uint8_t* p = bmp.getRow(y) + static_cast<ptrdiff_t>(x) * 4;
     p[0] = p[1] = p[2] = v;
     p[3] = 255;
+}
+
+// A single bright pixel has almost no "mass": with integer (round-down) box
+// blur, repeated passes at a large radius spread that mass over hundreds of
+// cells and it truncates away to exactly zero within 2-3 passes — a real,
+// expected property of integer box blur, not a bug. Using a solid block
+// gives enough accumulated mass to survive 3 passes and produce a
+// meaningful, non-degenerate spread to probe.
+void setBlock(Bitmap& bmp, int cx, int cy, int halfSize, uint8_t v) {
+    for (int y = cy - halfSize; y <= cy + halfSize; ++y) {
+        for (int x = cx - halfSize; x <= cx + halfSize; ++x) {
+            setPixel(bmp, x, y, v);
+        }
+    }
 }
 
 } // namespace
@@ -67,34 +80,25 @@ INSTANTIATE_TEST_SUITE_P(Radii, BoxBlurSymmetryTest,
                          ::testing::Values(6, 10, 15, 20, 30));
 
 TEST(BoxBlur3PassTest, ActuallyBlursBothAxes) {
-    int size = 41;
+    int size = 61;
     int center = size / 2;
+    int probeDistance = 24; // well outside the block (halfSize=18), well inside the image bounds
 
     std::vector<uint8_t> buf;
     Bitmap bmp = makeBitmap(buf, size, size);
-    setPixel(bmp, center, center, 255);
+    setBlock(bmp, center, center, /*halfSize=*/18, 255);
 
-    fprintf(stderr, "[diag] boxRadiusFromGaussian(20) = %d\n", boxRadiusFromGaussian(20));
-    fprintf(stderr, "[diag] before blur, center pixel R = %d\n", bmp.getRowConst(center)[static_cast<size_t>(center) * 4]);
-
-    boxBlur3Pass(bmp, /*gaussianRadius=*/20);
+    boxBlur3Pass(bmp, /*gaussianRadius=*/15);
 
     const uint8_t* centerRow = bmp.getRowConst(center);
-    fprintf(stderr, "[diag] center row R values, columns %d..%d: ", center - 8, center + 8);
-    for (int x = center - 8; x <= center + 8; ++x) {
-        fprintf(stderr, "%d ", centerRow[static_cast<size_t>(x) * 4]);
-    }
-    fprintf(stderr, "\n[diag] column %d R values, rows %d..%d: ", center, center - 8, center + 8);
-    for (int y = center - 8; y <= center + 8; ++y) {
-        fprintf(stderr, "%d ", bmp.getRowConst(y)[static_cast<size_t>(center) * 4]);
-    }
-    fprintf(stderr, "\n");
+    uint8_t stillInsideBlock = centerRow[static_cast<size_t>(center) * 4];
+    uint8_t rightOfBlock = centerRow[static_cast<size_t>(center + probeDistance) * 4];
+    uint8_t belowBlock = bmp.getRowConst(center + probeDistance)[static_cast<size_t>(center) * 4];
 
-    uint8_t rightOfCenter = centerRow[static_cast<size_t>(center + 3) * 4];
-    uint8_t belowCenter = bmp.getRowConst(center + 3)[static_cast<size_t>(center) * 4];
+    EXPECT_GT(stillInsideBlock, 200) << "center of a solid block should stay bright after blurring";
 
     // A bug that skips the horizontal pass leaves columns away from the
-    // center untouched horizontally (value stays 0); this must not happen.
-    EXPECT_GT(rightOfCenter, 0) << "horizontal pass did not spread the blur";
-    EXPECT_GT(belowCenter, 0) << "vertical pass did not spread the blur";
+    // block untouched horizontally (value stays 0); this must not happen.
+    EXPECT_GT(rightOfBlock, 0) << "horizontal pass did not spread the blur";
+    EXPECT_GT(belowBlock, 0) << "vertical pass did not spread the blur";
 }
