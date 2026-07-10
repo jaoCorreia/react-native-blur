@@ -100,7 +100,7 @@ TEST_F(GaussianBlurTest, SingleWhitePixelBlurred) {
     fillSolid(bmp, 0, 0, 0, 255);
     setPixel(bmp, size / 2, size / 2, 255, 255, 255, 255);
 
-    gaussianBlur(bmp, 5);
+    gaussianBlur(bmp, 6);
 
     uint8_t* center = bmp.getRow(size / 2) + (size / 2) * 4;
     EXPECT_LT(center[0], 255) << "Center should be darker after blur";
@@ -110,19 +110,18 @@ TEST_F(GaussianBlurTest, SingleWhitePixelBlurred) {
 }
 
 TEST_F(GaussianBlurTest, OutputIsSymmetric) {
-    int size = 8;
-    int centerX = 4;
-    int centerY = 4;
+    int size = 7;
+    int center = size / 2;
     auto bmp = createBitmap(size, size);
     fillSolid(bmp, 0, 0, 0, 255);
-    setPixel(bmp, centerX, centerY, 255, 255, 255, 255);
+    setPixel(bmp, center, center, 255, 255, 255, 255);
 
     gaussianBlur(bmp, 3);
 
     for (int y = 0; y < size; ++y) {
         const uint8_t* row = bmp.getRowConst(y);
-        for (int x = 0; x < centerX; ++x) {
-            int mirrorX = 2 * centerX - x;
+        for (int x = 0; x < center; ++x) {
+            int mirrorX = size - 1 - x;
             size_t offL = static_cast<size_t>(x) * 4;
             size_t offR = static_cast<size_t>(mirrorX) * 4;
             EXPECT_EQ(row[offL + 0], row[offR + 0])
