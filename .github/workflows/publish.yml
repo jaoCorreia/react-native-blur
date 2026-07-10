@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     name: Publish
@@ -33,7 +37,8 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Update npm for trusted publishing (OIDC) support
+        run: npm install -g npm@latest
+
       - name: Publish
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
