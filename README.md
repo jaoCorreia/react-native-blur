@@ -151,12 +151,14 @@ NEON is **always enabled** on ARM64/ARMv7. The inner loop uses fixed-point integ
 
 **Key advantages of this library:**
 
+- **Box Blur 3-pass** - O(1) per pixel, independent of radius. Auto-triggers for radius > 5. 512x512 R10 went from 4.9ms to **0.086ms** (57x faster).
+- **Auto-downscaling** - 2x (radius >= 8), 4x (radius >= 20). 16x fewer pixels at worst case.
 - **No API level restrictions** - C++ blur works identically from Android 5.0 (API 21) to latest
 - **No RenderScript dependency** - RenderScript was [deprecated in API 31](https://developer.android.com/guide/topics/renderscript/migrate) and removed from newer devices
-- **No bitmap downscaling** - Full-resolution blur with no quality loss
 - **No UI thread blocking** - Multithreaded processing via custom thread pool
-- **NEON SIMD** - 1.75x-1.9x speedup over scalar on ARM64
+- **NEON SIMD fixed-point** - `vmlal_s16` integer MAC, 2-pixel interior batches, zero branches in hot path
 - **Memory safe** - AddressSanitizer validated, zero heap-buffer-overflow
+- **Blur cache** - FNV-1a hash, skips recalculation on identical input
 
 ## Testing Strategy
 
@@ -203,6 +205,7 @@ All jobs run in parallel. The C++ core is fully validated on every commit.
 - [x] v1.3: Unit tests + benchmarks + CI
 - [x] v2: Auto-downscaling (2x/4x), fixed-point NEON (int32 MAC), blur cache
 - [x] v2.1: NEON 4-wide (2 pixels/iteration, branchless interior)
+- [x] v2.2: Box Blur 3-pass (O(1) per pixel, radius-independent, auto for R>5)
 - [ ] v3: GPU backend (Vulkan / OpenGL ES)
 - [ ] v4: iOS support (Objective-C++ bridge)
 - [ ] v5: Progressive blur (multi-pass)
