@@ -1,12 +1,14 @@
 #pragma once
 
 #include "bitmap.h"
+#include "scale.h"
 #include <vector>
 #include <cstddef>
 
 namespace blur {
 
 void gaussianBlur(Bitmap& bitmap, int radius, float sigma = -1.0f);
+void gaussianBlur(Bitmap& bitmap, const BlurOptions& options);
 
 void blurHorizontal(const Bitmap& src, Bitmap& dst,
                     const std::vector<float>& kernel, int radius);

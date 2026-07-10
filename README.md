@@ -193,10 +193,11 @@ All jobs run in parallel. The C++ core is fully validated on every commit.
 ## Roadmap
 
 - [x] v1: Gaussian Blur in C++
-- [x] v1.1: NEON SIMD optimization
+- [x] v1.1: NEON SIMD optimization (float)
 - [x] v1.2: Multithreaded processing
 - [x] v1.3: Unit tests + benchmarks + CI
-- [ ] v2: Intelligent cache (skip recalculation on unchanged content)
+- [x] v2: Auto-downscaling (2x/4x based on radius), fixed-point NEON (int32 MAC)
+- [x] v2.1: Blur cache (skip recalculation on unchanged content)
 - [ ] v3: GPU backend (Vulkan / OpenGL ES)
 - [ ] v4: iOS support (Objective-C++ bridge)
 - [ ] v5: Progressive blur (multi-pass)

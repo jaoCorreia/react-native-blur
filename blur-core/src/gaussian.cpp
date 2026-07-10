@@ -1,5 +1,7 @@
 #include "gaussian.h"
 #include "kernel.h"
+#include "scale.h"
+#include "cache.h"
 #include "thread_pool.h"
 #include <cstring>
 #include <algorithm>
@@ -132,27 +134,125 @@ void blurVertical(const Bitmap& src, Bitmap& dst,
 }
 
 void gaussianBlur(Bitmap& bitmap, int radius, float sigma) {
-    if (!bitmap.isValid() || radius <= 0) return;
+    gaussianBlur(bitmap, BlurOptions{radius, sigma, ScaleMode::Auto});
+}
 
-    auto kernel = generateGaussianKernel(radius, sigma);
+void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
+    if (!bitmap.isValid() || options.radius <= 0) return;
 
-    int width = bitmap.width;
-    int height = bitmap.height;
-    int channels = bitmap.channels;
+    int scale = 1;
+    if (options.scaleMode == ScaleMode::Auto) {
+        scale = autoScaleFactor(options.radius);
+    }
 
-    std::vector<uint8_t> tempBuffer(
-        static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels)
+    BlurCacheKey cacheKey{
+        hashBitmap(bitmap),
+        bitmap.width,
+        bitmap.height,
+        options.radius,
+        options.sigma,
+        scale
+    };
+
+    std::vector<uint8_t> cached;
+    if (BlurCache::instance().get(cacheKey, cached)) {
+        std::memcpy(bitmap.pixels, cached.data(), bitmap.totalBytes());
+        return;
+    }
+
+    if (scale == 1) {
+        auto kernel = generateGaussianKernel(options.radius, options.sigma);
+
+        int width = bitmap.width;
+        int height = bitmap.height;
+        int channels = bitmap.channels;
+
+        std::vector<uint8_t> tempBuffer(
+            static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(channels)
+        );
+
+        Bitmap temp;
+        temp.pixels = tempBuffer.data();
+        temp.width = width;
+        temp.height = height;
+        temp.stride = width * channels;
+        temp.channels = channels;
+
+        blurHorizontal(bitmap, temp, kernel, options.radius);
+        blurVertical(temp, bitmap, kernel, options.radius);
+        BlurCache::instance().put(cacheKey, bitmap);
+        return;
+    }
+
+    int dw = bitmap.width / scale;
+    int dh = bitmap.height / scale;
+    int ch = bitmap.channels;
+
+    std::vector<uint8_t> scaledBuffer(
+        static_cast<size_t>(dw) * static_cast<size_t>(dh) * static_cast<size_t>(ch)
     );
 
-    Bitmap temp;
-    temp.pixels = tempBuffer.data();
-    temp.width = width;
-    temp.height = height;
-    temp.stride = width * channels;
-    temp.channels = channels;
+    Bitmap scaled;
+    scaled.pixels = scaledBuffer.data();
+    scaled.width = dw;
+    scaled.height = dh;
+    scaled.stride = dw * ch;
+    scaled.channels = ch;
 
-    blurHorizontal(bitmap, temp, kernel, radius);
-    blurVertical(temp, bitmap, kernel, radius);
+    downscale2x(bitmap, scaled);
+
+    if (scale >= 4) {
+        std::vector<uint8_t> scaled2Buffer(
+            static_cast<size_t>(dw / 2) * static_cast<size_t>(dh / 2) * static_cast<size_t>(ch)
+        );
+        Bitmap scaled2;
+        scaled2.pixels = scaled2Buffer.data();
+        scaled2.width = dw / 2;
+        scaled2.height = dh / 2;
+        scaled2.stride = (dw / 2) * ch;
+        scaled2.channels = ch;
+
+        downscale2x(scaled, scaled2);
+
+        auto kernel = generateGaussianKernel(options.radius / scale, options.sigma);
+        int scaledRadius = std::max(1, options.radius / scale);
+
+        std::vector<uint8_t> tempBuffer(
+            static_cast<size_t>(scaled2.width) * static_cast<size_t>(scaled2.height) * static_cast<size_t>(ch)
+        );
+        Bitmap temp;
+        temp.pixels = tempBuffer.data();
+        temp.width = scaled2.width;
+        temp.height = scaled2.height;
+        temp.stride = scaled2.width * ch;
+        temp.channels = ch;
+
+        blurHorizontal(scaled2, temp, kernel, scaledRadius);
+        blurVertical(temp, scaled2, kernel, scaledRadius);
+
+        upscale2x(scaled2, scaled);
+        upscale2x(scaled, bitmap);
+    } else {
+        auto kernel = generateGaussianKernel(options.radius / scale, options.sigma);
+        int scaledRadius = std::max(1, options.radius / scale);
+
+        std::vector<uint8_t> tempBuffer(
+            static_cast<size_t>(dw) * static_cast<size_t>(dh) * static_cast<size_t>(ch)
+        );
+        Bitmap temp;
+        temp.pixels = tempBuffer.data();
+        temp.width = dw;
+        temp.height = dh;
+        temp.stride = dw * ch;
+        temp.channels = ch;
+
+        blurHorizontal(scaled, temp, kernel, scaledRadius);
+        blurVertical(temp, scaled, kernel, scaledRadius);
+
+        upscale2x(scaled, bitmap);
+    }
+
+    BlurCache::instance().put(cacheKey, bitmap);
 }
 
 } // namespace blur
