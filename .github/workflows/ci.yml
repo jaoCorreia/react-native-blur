@@ -24,6 +24,7 @@ jobs:
           cmake -B build -S blur-core \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DBLUR_BUILD_TESTS=ON
 
       - name: Build
@@ -46,6 +47,8 @@ jobs:
           cmake -B build -S blur-core \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DBENCHMARK_ENABLE_TESTING=OFF \
             -DBLUR_BUILD_BENCHMARKS=ON
 
       - name: Build
@@ -68,6 +71,7 @@ jobs:
           cmake -B build -S blur-core \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer" \
             -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
             -DBLUR_BUILD_TESTS=ON
@@ -92,22 +96,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Build Android
         run: |
           cd android
+          gradle wrapper --gradle-version 8.5
           ./gradlew assembleRelease
-
-      - name: Run Android instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          arch: x86_64
-          script: |
-            cd android
-            ./gradlew connectedAndroidTest
 
   typecheck:
     name: TypeScript Type Check

@@ -1,4 +1,5 @@
 #include "gaussian.h"
+#include "kernel.h"
 #include "bitmap.h"
 #include <benchmark/benchmark.h>
 #include <vector>

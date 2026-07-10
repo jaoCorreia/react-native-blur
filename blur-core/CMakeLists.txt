@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.18...4.0)
 project(blur-core LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -37,7 +37,7 @@ if(BLUR_BUILD_TESTS)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG v1.14.0
+        GIT_TAG v1.15.2
     )
     FetchContent_MakeAvailable(googletest)
 
@@ -58,10 +58,11 @@ endif()
 
 if(BLUR_BUILD_BENCHMARKS)
     include(FetchContent)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
         googlebenchmark
         GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG v1.8.3
+        GIT_TAG v1.9.1
     )
     FetchContent_MakeAvailable(googlebenchmark)
 
