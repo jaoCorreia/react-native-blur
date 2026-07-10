@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RenderEffect
-import android.graphics.RenderEffect.Companion.createBlurEffect
 import android.graphics.Shader
 import android.os.Build
 import android.util.Log
@@ -78,7 +77,7 @@ class BlurView(context: Context) : FrameLayout(context) {
 
     private fun drawWithRenderEffect(canvas: Canvas) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val effect = createBlurEffect(
+            val effect = RenderEffect.createBlurEffect(
                 blurRadius,
                 blurRadius,
                 Shader.TileMode.CLAMP
