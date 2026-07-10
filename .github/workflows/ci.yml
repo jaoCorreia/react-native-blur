@@ -187,6 +187,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # The runner's ambient `gradle` defaults to whatever's newest in the
+      # image (9.x), which is too new for AGP 8.2.0 (removed APIs like
+      # SelfResolvingDependency) — there's no committed Gradle wrapper here,
+      # so pin an AGP-8.2-compatible version explicitly instead.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+
       # Compiles the Kotlin view manager and cross-compiles blur-core for
       # every ABI (including arm64-v8a/armeabi-v7a, i.e. the real NEON path)
       # through the actual NDK toolchain — nothing in the C++-only CI jobs

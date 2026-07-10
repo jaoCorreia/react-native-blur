@@ -27,7 +27,13 @@ static void boxBlurHorizontal(const Bitmap& src, Bitmap& dst, int radius,
         int sum[4] = {0, 0, 0, 0};
         int count = 0;
 
-        int initEnd = std::min(radius, width - 1);
+        // Preload the window for the position just before x=0, i.e.
+        // [-1-radius, -1+radius] clamped to [0, width-1] = [0, radius-1].
+        // Using `radius` here (instead of `radius - 1`) double-counts
+        // position `radius` itself, since the x=0 iteration below also adds
+        // it via `newRight` — inflating the denominator by one for every
+        // position in the row, not just near this edge.
+        int initEnd = std::min(radius - 1, width - 1);
         for (int i = 0; i <= initEnd; ++i) {
             for (int c = 0; c < channels; ++c) {
                 sum[c] += srcRow[i * channels + c];
@@ -69,7 +75,9 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
 
     std::vector<int> colSum(static_cast<size_t>(rowWidth), 0);
 
-    int initEnd = std::min(radius, height - 1);
+    // See the matching comment in boxBlurHorizontal: this preloads the
+    // window for y=-1, which is [0, radius-1], not [0, radius].
+    int initEnd = std::min(radius - 1, height - 1);
     for (int i = 0; i <= initEnd; ++i) {
         const uint8_t* row = src.getRowConst(i) + static_cast<ptrdiff_t>(startCol) * channels;
         for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] += row[x];
