@@ -1,10 +1,20 @@
 #include "pool.h"
-#include <mutex>
 #include <algorithm>
 
 namespace blur {
 
-static std::mutex gPoolMutex;
+namespace {
+
+constexpr size_t kMinSizeClass = 4096;
+constexpr size_t kMaxThreadCacheBytes = 64 * 1024 * 1024; // cap per-thread cache growth
+
+size_t sizeClass(size_t n) {
+    size_t cls = kMinSizeClass;
+    while (cls < n) cls <<= 1;
+    return cls;
+}
+
+} // namespace
 
 BufferPool& BufferPool::instance() {
     static BufferPool pool;
@@ -20,10 +30,11 @@ std::vector<uint8_t> BufferPool::acquire(size_t sizeInBytes) {
     if (sizeInBytes == 0) return {};
 
     auto& cache = threadCache();
-    auto it = cache.buckets.find(sizeInBytes);
+    auto it = cache.buckets.find(sizeClass(sizeInBytes));
 
     if (it != cache.buckets.end() && it->second.capacity() >= sizeInBytes) {
         auto result = std::move(it->second);
+        cache.totalBytes -= result.capacity();
         cache.buckets.erase(it);
         result.resize(sizeInBytes);
         return result;
@@ -38,18 +49,30 @@ void BufferPool::release(std::vector<uint8_t>& buffer) {
     auto& cache = threadCache();
     size_t cap = buffer.capacity();
 
-    auto it = cache.buckets.find(cap);
+    // Bound how much memory a single thread can pin in cached buffers;
+    // beyond the cap, just let the buffer free normally instead of growing forever.
+    if (cache.totalBytes + cap > kMaxThreadCacheBytes) {
+        std::vector<uint8_t>().swap(buffer);
+        return;
+    }
+
+    size_t cls = sizeClass(cap);
+    auto it = cache.buckets.find(cls);
     if (it == cache.buckets.end() || it->second.capacity() < cap) {
-        std::vector<uint8_t>().swap(cache.buckets[cap]);
-        cache.buckets[cap] = std::move(buffer);
+        if (it != cache.buckets.end()) {
+            cache.totalBytes -= it->second.capacity();
+        }
+        cache.totalBytes += cap;
+        cache.buckets[cls] = std::move(buffer);
     }
 
     std::vector<uint8_t>().swap(buffer);
 }
 
 void BufferPool::clear() {
-    std::lock_guard<std::mutex> lock(gPoolMutex);
-    threadCache().buckets.clear();
+    auto& cache = threadCache();
+    cache.buckets.clear();
+    cache.totalBytes = 0;
 }
 
 } // namespace blur

@@ -20,6 +20,7 @@ private:
 
     struct ThreadCache {
         std::unordered_map<size_t, std::vector<uint8_t>> buckets;
+        size_t totalBytes = 0;
     };
 
     static ThreadCache& threadCache();
