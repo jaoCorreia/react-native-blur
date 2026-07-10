@@ -82,6 +82,7 @@ android {
 }
 
 dependencies {
+    compileOnly "com.facebook.react:react-android:0.73.0"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.22"
     implementation "androidx.annotation:annotation:1.7.1"
 
