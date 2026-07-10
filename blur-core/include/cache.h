@@ -47,15 +47,22 @@ class BlurCache {
 public:
     static BlurCache& instance();
 
-    bool get(const BlurCacheKey& key, std::vector<uint8_t>& out);
+    // Writes the cached result directly into out.pixels (out must already be
+    // sized to match the bitmap the key describes) instead of handing back
+    // an intermediate vector for the caller to copy a second time.
+    bool get(const BlurCacheKey& key, Bitmap& out);
     void put(BlurCacheKey key, const Bitmap& result);
     void clear();
     size_t size() const;
+    size_t totalBytes() const;
 
 private:
     BlurCache() = default;
 
-    static constexpr size_t MAX_ENTRIES = 16;
+    // Budget is in bytes, not entry count: a handful of full-screen bitmaps
+    // can dwarf a small icon-sized cache many times over, so a fixed entry
+    // count can't bound memory the way a byte budget does.
+    static constexpr size_t MAX_BYTES = 64 * 1024 * 1024;
 
     struct Entry {
         std::vector<uint8_t> data;
@@ -65,6 +72,7 @@ private:
     mutable std::mutex mutex;
     std::unordered_map<BlurCacheKey, std::list<Entry>::iterator, BlurCacheKeyHash> index;
     std::list<Entry> lru;
+    size_t cachedBytes = 0;
 };
 
 } // namespace blur

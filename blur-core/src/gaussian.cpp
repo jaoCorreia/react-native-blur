@@ -5,6 +5,7 @@
 #include "boxblur.h"
 #include "pool.h"
 #include "thread_pool.h"
+#include "avx2.h"
 #include <cstring>
 #include <algorithm>
 #include <vector>
@@ -52,8 +53,16 @@ void blurVerticalScalar(const Bitmap& src, Bitmap& dst,
     int height = src.height;
     int channels = src.channels;
 
-    for (int x = startCol; x < endCol; ++x) {
-        for (int y = 0; y < height; ++y) {
+    // y outer / x inner: for a fixed y, the (2*radius+1) source rows touched
+    // by the k-loop stay resident in L1 across the whole column strip, since
+    // each row is only re-approached ~channels bytes later than last time.
+    // The column-major version (x outer / y inner) evicts every row from
+    // cache before it can be reused, since a full height-deep sweep happens
+    // between touches of the same row.
+    for (int y = 0; y < height; ++y) {
+        uint8_t* dstRow = dst.getRow(y);
+
+        for (int x = startCol; x < endCol; ++x) {
             float sum[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
             for (int k = -radius; k <= radius; ++k) {
@@ -67,7 +76,7 @@ void blurVerticalScalar(const Bitmap& src, Bitmap& dst,
                 }
             }
 
-            uint8_t* dstPixel = dst.getRow(y) + static_cast<ptrdiff_t>(x) * channels;
+            uint8_t* dstPixel = dstRow + static_cast<ptrdiff_t>(x) * channels;
             for (int c = 0; c < channels; ++c) {
                 dstPixel[c] = static_cast<uint8_t>(
                     std::clamp(sum[c], 0.0f, 255.0f)
@@ -87,12 +96,21 @@ void blurHorizontal(const Bitmap& src, Bitmap& dst,
     for (size_t i = 0; i < kernel.size(); ++i) {
         kf[i] = static_cast<int16_t>(kernel[i] * 256.0f + 0.5f);
     }
+#elif defined(__x86_64__) || defined(_M_X64)
+    // Checked once per call, not per row/chunk: cpuid doesn't change mid-run.
+    static const bool useAVX2 = cpuSupportsAVX2();
 #endif
 
     pool.parallelFor(height, std::max(1, height / (pool.threadCount() * 4)),
                      [&](int startRow, int endRow) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
         blurHorizontalNEON(src, dst, kf, radius, startRow, endRow);
+#elif defined(__x86_64__) || defined(_M_X64)
+        if (useAVX2) {
+            blurHorizontalAVX2(src, dst, kernel, radius, startRow, endRow);
+        } else {
+            blurHorizontalScalar(src, dst, kernel, radius, startRow, endRow);
+        }
 #else
         blurHorizontalScalar(src, dst, kernel, radius, startRow, endRow);
 #endif
@@ -109,12 +127,20 @@ void blurVertical(const Bitmap& src, Bitmap& dst,
     for (size_t i = 0; i < kernel.size(); ++i) {
         kf[i] = static_cast<int16_t>(kernel[i] * 256.0f + 0.5f);
     }
+#elif defined(__x86_64__) || defined(_M_X64)
+    static const bool useAVX2 = cpuSupportsAVX2();
 #endif
 
     pool.parallelFor(width, std::max(1, width / (pool.threadCount() * 4)),
                      [&](int startCol, int endCol) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
         blurVerticalNEON(src, dst, kf, radius, startCol, endCol);
+#elif defined(__x86_64__) || defined(_M_X64)
+        if (useAVX2) {
+            blurVerticalAVX2(src, dst, kernel, radius, startCol, endCol);
+        } else {
+            blurVerticalScalar(src, dst, kernel, radius, startCol, endCol);
+        }
 #else
         blurVerticalScalar(src, dst, kernel, radius, startCol, endCol);
 #endif
@@ -142,9 +168,7 @@ void gaussianBlur(Bitmap& bitmap, const BlurOptions& options) {
         scale
     };
 
-    std::vector<uint8_t> cached;
-    if (BlurCache::instance().get(cacheKey, cached)) {
-        std::memcpy(bitmap.pixels, cached.data(), bitmap.totalBytes());
+    if (BlurCache::instance().get(cacheKey, bitmap)) {
         return;
     }
 

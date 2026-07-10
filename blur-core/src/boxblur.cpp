@@ -58,42 +58,42 @@ static void boxBlurHorizontal(const Bitmap& src, Bitmap& dst, int radius,
     }
 }
 
+// y-major sweep: keeps a running sum per column so each row is read once,
+// sequentially, instead of striding through the image once per column.
 static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
                              int startCol, int endCol) {
-    int width = src.width;
     int height = src.height;
     int channels = src.channels;
+    int colCount = endCol - startCol;
+    int rowWidth = colCount * channels;
 
-    for (int x = startCol; x < endCol; ++x) {
-        int sum[4] = {0, 0, 0, 0};
-        int count = 0;
+    std::vector<int> colSum(static_cast<size_t>(rowWidth), 0);
 
-        int initEnd = std::min(radius, height - 1);
-        for (int i = 0; i <= initEnd; ++i) {
-            const uint8_t* pixel = src.getRowConst(i) + x * channels;
-            for (int c = 0; c < channels; ++c) sum[c] += pixel[c];
+    int initEnd = std::min(radius, height - 1);
+    for (int i = 0; i <= initEnd; ++i) {
+        const uint8_t* row = src.getRowConst(i) + static_cast<ptrdiff_t>(startCol) * channels;
+        for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] += row[x];
+    }
+    int count = initEnd + 1;
+
+    for (int y = 0; y < height; ++y) {
+        int newBottom = y + radius;
+        if (newBottom < height) {
+            const uint8_t* row = src.getRowConst(newBottom) + static_cast<ptrdiff_t>(startCol) * channels;
+            for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] += row[x];
             count++;
         }
 
-        for (int y = 0; y < height; ++y) {
-            int newBottom = y + radius;
-            if (newBottom < height) {
-                const uint8_t* p = src.getRowConst(newBottom) + x * channels;
-                for (int c = 0; c < channels; ++c) sum[c] += p[c];
-                count++;
-            }
+        int oldTop = y - radius - 1;
+        if (oldTop >= 0) {
+            const uint8_t* row = src.getRowConst(oldTop) + static_cast<ptrdiff_t>(startCol) * channels;
+            for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] -= row[x];
+            count--;
+        }
 
-            int oldTop = y - radius - 1;
-            if (oldTop >= 0) {
-                const uint8_t* p = src.getRowConst(oldTop) + x * channels;
-                for (int c = 0; c < channels; ++c) sum[c] -= p[c];
-                count--;
-            }
-
-            uint8_t* dstPixel = dst.getRow(y) + x * channels;
-            for (int c = 0; c < channels; ++c) {
-                dstPixel[c] = static_cast<uint8_t>(std::clamp(sum[c] / count, 0, 255));
-            }
+        uint8_t* dstRow = dst.getRow(y) + static_cast<ptrdiff_t>(startCol) * channels;
+        for (int x = 0; x < rowWidth; ++x) {
+            dstRow[x] = static_cast<uint8_t>(std::clamp(colSum[static_cast<size_t>(x)] / count, 0, 255));
         }
     }
 }
@@ -102,14 +102,24 @@ void boxBlur1D(const Bitmap& src, Bitmap& dst, int radius) {
     ThreadPool& pool = ThreadPool::instance();
     int numThreads = pool.threadCount();
 
+    // The vertical pass must read the horizontal pass's output, not src again,
+    // so it needs its own scratch buffer rather than writing directly into dst.
+    ScopedBuffer scratch(dst.totalBytes());
+    Bitmap horizontalResult;
+    horizontalResult.pixels = scratch.get();
+    horizontalResult.width = dst.width;
+    horizontalResult.height = dst.height;
+    horizontalResult.stride = dst.stride;
+    horizontalResult.channels = dst.channels;
+
     pool.parallelFor(src.height, std::max(1, src.height / (numThreads * 4)),
                      [&](int startRow, int endRow) {
-        boxBlurHorizontal(src, dst, radius, startRow, endRow);
+        boxBlurHorizontal(src, horizontalResult, radius, startRow, endRow);
     });
 
     pool.parallelFor(src.width, std::max(1, src.width / (numThreads * 4)),
                      [&](int startCol, int endCol) {
-        boxBlurVertical(src, dst, radius, startCol, endCol);
+        boxBlurVertical(horizontalResult, dst, radius, startCol, endCol);
     });
 }
 

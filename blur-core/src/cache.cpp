@@ -26,41 +26,46 @@ BlurCache& BlurCache::instance() {
     return instance;
 }
 
-bool BlurCache::get(const BlurCacheKey& key, std::vector<uint8_t>& out) {
+bool BlurCache::get(const BlurCacheKey& key, Bitmap& out) {
     std::lock_guard<std::mutex> lock(mutex);
 
     auto it = index.find(key);
-    if (it != index.end()) {
-        auto listIt = it->second;
-        out = listIt->data;
-        lru.splice(lru.end(), lru, listIt);
-        return true;
-    }
-    return false;
+    if (it == index.end()) return false;
+
+    auto listIt = it->second;
+    if (listIt->data.size() != out.totalBytes()) return false;
+
+    std::memcpy(out.pixels, listIt->data.data(), listIt->data.size());
+    lru.splice(lru.end(), lru, listIt);
+    return true;
 }
 
 void BlurCache::put(BlurCacheKey key, const Bitmap& result) {
+    size_t bytes = result.totalBytes();
+    if (bytes == 0 || bytes > MAX_BYTES) return;
+
     std::lock_guard<std::mutex> lock(mutex);
 
     auto it = index.find(key);
     if (it != index.end()) {
         lru.splice(lru.end(), lru, it->second);
-        std::memcpy(it->second->data.data(), result.pixels, result.totalBytes());
+        std::memcpy(it->second->data.data(), result.pixels, bytes);
         return;
     }
 
     Entry entry;
     entry.key = key;
-    entry.data.resize(result.totalBytes());
-    std::memcpy(entry.data.data(), result.pixels, result.totalBytes());
+    entry.data.resize(bytes);
+    std::memcpy(entry.data.data(), result.pixels, bytes);
 
     lru.push_back(std::move(entry));
     auto listIt = std::prev(lru.end());
     index[key] = listIt;
+    cachedBytes += bytes;
 
-    while (lru.size() > MAX_ENTRIES) {
-        auto oldest = lru.front();
-        index.erase(oldest.key);
+    while (cachedBytes > MAX_BYTES && !lru.empty()) {
+        cachedBytes -= lru.front().data.size();
+        index.erase(lru.front().key);
         lru.pop_front();
     }
 }
@@ -69,11 +74,17 @@ void BlurCache::clear() {
     std::lock_guard<std::mutex> lock(mutex);
     index.clear();
     lru.clear();
+    cachedBytes = 0;
 }
 
 size_t BlurCache::size() const {
     std::lock_guard<std::mutex> lock(mutex);
     return lru.size();
+}
+
+size_t BlurCache::totalBytes() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return cachedBytes;
 }
 
 } // namespace blur
