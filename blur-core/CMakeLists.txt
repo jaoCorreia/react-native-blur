@@ -15,17 +15,13 @@ set(BLUR_CORE_SOURCES
     src/thread_pool.cpp
 )
 
-if(BLUR_ENABLE_NEON AND (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|armv7" OR ANDROID))
+if(BLUR_ENABLE_NEON AND CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|armv7")
     list(APPEND BLUR_CORE_SOURCES src/neon/gaussian_neon.cpp)
 endif()
 
 add_library(blur-core STATIC ${BLUR_CORE_SOURCES})
 
 target_include_directories(blur-core PUBLIC include)
-
-if(BLUR_ENABLE_NEON AND (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|armv7" OR ANDROID))
-    target_compile_definitions(blur-core PRIVATE __ARM_NEON__=1)
-endif()
 
 if(ANDROID)
     find_library(log-lib log)
