@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include <cstring>
+#include <cstdio>
 
 using namespace blur;
 
@@ -73,9 +74,22 @@ TEST(BoxBlur3PassTest, ActuallyBlursBothAxes) {
     Bitmap bmp = makeBitmap(buf, size, size);
     setPixel(bmp, center, center, 255);
 
+    fprintf(stderr, "[diag] boxRadiusFromGaussian(20) = %d\n", boxRadiusFromGaussian(20));
+    fprintf(stderr, "[diag] before blur, center pixel R = %d\n", bmp.getRowConst(center)[static_cast<size_t>(center) * 4]);
+
     boxBlur3Pass(bmp, /*gaussianRadius=*/20);
 
     const uint8_t* centerRow = bmp.getRowConst(center);
+    fprintf(stderr, "[diag] center row R values, columns %d..%d: ", center - 8, center + 8);
+    for (int x = center - 8; x <= center + 8; ++x) {
+        fprintf(stderr, "%d ", centerRow[static_cast<size_t>(x) * 4]);
+    }
+    fprintf(stderr, "\n[diag] column %d R values, rows %d..%d: ", center, center - 8, center + 8);
+    for (int y = center - 8; y <= center + 8; ++y) {
+        fprintf(stderr, "%d ", bmp.getRowConst(y)[static_cast<size_t>(center) * 4]);
+    }
+    fprintf(stderr, "\n");
+
     uint8_t rightOfCenter = centerRow[static_cast<size_t>(center + 3) * 4];
     uint8_t belowCenter = bmp.getRowConst(center + 3)[static_cast<size_t>(center) * 4];
 
