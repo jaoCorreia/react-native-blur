@@ -120,24 +120,34 @@ The library automatically selects the fastest algorithm:
 | > 5 | Box Blur 3-pass | O(N), **radius-independent** | Auto, loss < 3% |
 | ≥ 8 | Downscale 2x/4x + Blur | O(N/4) | Reduces pixel count |
 
-### Benchmarks (x86\_64, 16 threads)
+### Benchmarks (x86\_64, 16 threads, AVX2)
 
 | Resolution | Radius | Time | Method |
 |------------|--------|------|--------|
-| 256x256 | 5 | 0.01ms | Gaussian + cache |
-| 512x512 | 5 | 0.08ms | Gaussian + cache |
-| 512x512 | 10 | **0.09ms** | Box 3-pass |
-| 1024x1024 | 15 | **0.41ms** | Box 3-pass |
-| 2048x2048 | 8 | **1.95ms** | Box 3-pass |
-| 4096x4096 | 8 | **25.3ms** | Box 3-pass |
+| 256x256 | 5 | **0.005ms** | Gaussian + cache |
+| 512x512 | 5 | **0.04ms** | Gaussian + cache |
+| 512x512 | 10 | **0.05ms** | Box 3-pass + AVX2 |
+| 1024x1024 | 5 | **0.17ms** | Gaussian + AVX2 |
+| 1024x1024 | 15 | **0.17ms** | Box 3-pass + AVX2 |
+| 2048x2048 | 8 | **0.95ms** | Box 3-pass + AVX2 |
+| 4096x4096 | 8 | **4.07ms** | Box 3-pass + AVX2 |
 
-*Measured on GitHub Actions ubuntu-latest. ARM64 (Pixel 7) is ~1.8x faster with NEON.*
+*Measured on GitHub Actions ubuntu-latest (x86\_64, 16 threads). ARM64 (Pixel 7) is ~1.8x faster with NEON.*
+
+### Speedup from v1.0 (first release)
+
+| Resolution | Radius | v1.0 | v1.4.2 | Speedup |
+|------------|--------|------|--------|---------|
+| 512x512 | 10 | 4.68ms | 0.05ms | **94x** |
+| 1024x1024 | 15 | 24.2ms | 0.17ms | **142x** |
+| 2048x2048 | 8 | 59.5ms | 0.95ms | **63x** |
+| 4096x4096 | 8 | 316ms | 4.07ms | **78x** |
 
 ### Comparison with other libraries (512x512, radius 10)
 
 | Library | Time (est.) | Method | Android Support | Notes |
 |---------|------------|--------|----------------|-------|
-| **react-native-blur (this)** | **4.8 ms** | C++ + NEON + Threads | All versions (API 21+) | Consistent across devices |
+| **react-native-cpp-blur (this)** | **0.05 ms** | C++ + AVX2/NEON + Box 3-pass | All versions (API 21+) | Consistent across devices |
 | `@react-native-community/blur` | ~15-25 ms | RenderScript | API 17-30 (deprecated) | Discontinued on API 31+ |
 | `expo-blur` (best case) | ~2-5 ms | RenderEffect (GPU) | API 31+ only | Native Android blur shader |
 | `expo-blur` (fallback) | ~50-100 ms | Bitmap downscale | API 21-30 | Heavy quality loss |
@@ -145,15 +155,17 @@ The library automatically selects the fastest algorithm:
 
 **Key advantages of this library:**
 
-- **Box Blur 3-pass** - O(1) per pixel. 512x512 R10: **0.09ms** (was 4.9ms, 54x faster)
+- **Box Blur 3-pass** - O(1) per pixel. 512x512 R10: **0.05ms** (was 4.9ms, 94x faster)
+- **AVX2 + NEON dual SIMD** - AVX2 on x86_64, fixed-point NEON on ARM64. 2-6x universal speedup
+- **Cache-friendly vertical sweeps** - y-major iteration with running column sums, L1 cache resident
 - **Auto algorithm selection** - Gaussian for precision (R≤5), Box for speed (R>5), Downscale (R≥8)
-- **Work-stealing thread pool** - atomic counter, threads claim chunks dynamically. 25% faster at 4K
-- **Buffer pool** - zero malloc/free after first allocation, thread-local reuse
-- **Blur cache** - FNV-1a hash + LRU, skips recalculation on identical input
-- **Kernel cache** - Gaussian kernel cached by (radius, sigma), 4x faster generation
-- **NEON SIMD fixed-point** - `vmlal_s16` integer MAC, 2-pixel batches, zero branches
+- **Work-stealing thread pool** - atomic counter, threads claim chunks dynamically
+- **Buffer pool** - size-classed power-of-2 buckets, 64MB cap per thread, zero malloc after warmup
+- **Blur cache** - FNV-1a hash + LRU with byte budget, thread-safe via `std::mutex`
+- **Kernel cache** - Gaussian kernel cached by (radius, sigma), 3x faster generation
 - **Android 12+ aware** - skips C++ blur when GPU RenderEffect is available, no double blur
-- **No API restrictions** - works from Android 5.0 (API 21) to latest
+- **29 unit tests** - GoogleTest covering kernel, Gaussian, box blur, cache
+- **CI tests ARM NEON** - QEMU aarch64 cross-compile runs the full test suite for NEON path
 - **Memory safe** - AddressSanitizer validated, zero heap-buffer-overflow, thread-safe cache
 
 ## Testing Strategy
@@ -186,12 +198,14 @@ The library automatically selects the fastest algorithm:
 
 On every push and PR:
 
-1. **C++ Unit Tests** (Debug + Release)
+1. **C++ Unit Tests** (Debug + Release) — 29 tests
 2. **C++ Benchmarks**
 3. **Address Sanitizer** (memory safety)
-4. **TypeScript Type Check**
+4. **aarch64 QEMU** — cross-compiles + runs full test suite for NEON path
+5. **Android Gradle Build** — compiles Kotlin + cross-compiles blur-core for all 4 ABIs via NDK
+6. **TypeScript Type Check**
 
-All jobs run in parallel. The C++ core is fully validated on every commit.
+All jobs run in parallel. The NEON path is compiled and tested on every commit.
 
 ## Roadmap
 
@@ -201,7 +215,8 @@ All jobs run in parallel. The C++ core is fully validated on every commit.
 - [x] v1.3: Unit tests + benchmarks + CI
 - [x] v2: Auto-downscaling (2x/4x), fixed-point NEON (int32 MAC), blur cache
 - [x] v2.1: NEON 4-wide (2 pixels/iteration, branchless interior)
-- [x] v2.2: Box Blur 3-pass (O(1) per pixel, radius-independent, auto for R>5)
+- [x] v2.2: Box Blur 3-pass (O(1) per pixel, radius-independent)
+- [x] v2.3: AVX2 path + cache-friendly vertical sweeps + buffer pool
 - [ ] v3: GPU backend (Vulkan / OpenGL ES)
 - [ ] v4: iOS support (Objective-C++ bridge)
 - [ ] v5: Progressive blur (multi-pass)
