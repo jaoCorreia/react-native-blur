@@ -26,11 +26,11 @@ void blurVerticalScalar(const Bitmap& src, Bitmap& dst,
 
 #if defined(__ARM_NEON__) || defined(__aarch64__)
 void blurHorizontalNEON(const Bitmap& src, Bitmap& dst,
-                        const std::vector<float>& kernel, int radius,
+                        const std::vector<int16_t>& kf, int radius,
                         int startRow, int endRow);
 
 void blurVerticalNEON(const Bitmap& src, Bitmap& dst,
-                      const std::vector<float>& kernel, int radius,
+                      const std::vector<int16_t>& kf, int radius,
                       int startCol, int endCol);
 #endif
 

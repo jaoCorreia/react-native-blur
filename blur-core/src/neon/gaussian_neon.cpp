@@ -8,14 +8,6 @@
 
 namespace blur {
 
-static std::vector<int16_t> precomputeKernelFixed(const std::vector<float>& kernel) {
-    std::vector<int16_t> kf(kernel.size());
-    for (size_t i = 0; i < kernel.size(); ++i) {
-        kf[i] = static_cast<int16_t>(kernel[i] * 256.0f + 0.5f);
-    }
-    return kf;
-}
-
 static void storePixel(uint8_t* dst, uint8x8_t result8) {
     vst1_lane_u8(dst,     result8, 0);
     vst1_lane_u8(dst + 1, result8, 1);
@@ -24,11 +16,10 @@ static void storePixel(uint8_t* dst, uint8x8_t result8) {
 }
 
 void blurHorizontalNEON(const Bitmap& src, Bitmap& dst,
-                        const std::vector<float>& kernel, int radius,
+                        const std::vector<int16_t>& kf, int radius,
                         int startRow, int endRow) {
     int width = src.width;
     int channels = src.channels;
-    auto kf = precomputeKernelFixed(kernel);
 
     for (int y = startRow; y < endRow; ++y) {
         const uint8_t* srcRow = src.getRowConst(y);
@@ -128,11 +119,10 @@ void blurHorizontalNEON(const Bitmap& src, Bitmap& dst,
 }
 
 void blurVerticalNEON(const Bitmap& src, Bitmap& dst,
-                      const std::vector<float>& kernel, int radius,
+                      const std::vector<int16_t>& kf, int radius,
                       int startCol, int endCol) {
     int height = src.height;
     int channels = src.channels;
-    auto kf = precomputeKernelFixed(kernel);
 
     for (int x = startCol; x < endCol; ++x) {
         int topEdge = std::min(radius, height);

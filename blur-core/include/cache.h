@@ -4,6 +4,8 @@
 #include "scale.h"
 #include <cstdint>
 #include <unordered_map>
+#include <list>
+#include <mutex>
 #include <vector>
 #include <functional>
 
@@ -52,7 +54,17 @@ public:
 
 private:
     BlurCache() = default;
-    std::unordered_map<BlurCacheKey, std::vector<uint8_t>, BlurCacheKeyHash> cache;
+
+    static constexpr size_t MAX_ENTRIES = 16;
+
+    struct Entry {
+        std::vector<uint8_t> data;
+        BlurCacheKey key;
+    };
+
+    mutable std::mutex mutex;
+    std::unordered_map<BlurCacheKey, std::list<Entry>::iterator, BlurCacheKeyHash> index;
+    std::list<Entry> lru;
 };
 
 } // namespace blur

@@ -100,12 +100,15 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
 
 void boxBlur1D(const Bitmap& src, Bitmap& dst, int radius) {
     ThreadPool& pool = ThreadPool::instance();
+    int numThreads = pool.threadCount();
 
-    pool.parallelFor(src.height, 1, [&](int startRow, int endRow) {
+    pool.parallelFor(src.height, std::max(1, src.height / (numThreads * 4)),
+                     [&](int startRow, int endRow) {
         boxBlurHorizontal(src, dst, radius, startRow, endRow);
     });
 
-    pool.parallelFor(src.width, 1, [&](int startCol, int endCol) {
+    pool.parallelFor(src.width, std::max(1, src.width / (numThreads * 4)),
+                     [&](int startCol, int endCol) {
         boxBlurVertical(src, dst, radius, startCol, endCol);
     });
 }

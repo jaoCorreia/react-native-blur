@@ -108,7 +108,9 @@ class BlurView(context: Context) : FrameLayout(context) {
 
             drawChildContent(canvas)
 
-            if (NativeBlur.isAvailable() && blurRadius > 0f) {
+            val useGPU = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+            if (!useGPU && NativeBlur.isAvailable() && blurRadius > 0f) {
                 NativeBlur.applyBlur(bitmap, blurRadius.toInt())
             }
 

@@ -82,9 +82,17 @@ void blurHorizontal(const Bitmap& src, Bitmap& dst,
     ThreadPool& pool = ThreadPool::instance();
     int height = src.height;
 
-    pool.parallelFor(height, 1, [&](int startRow, int endRow) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
-        blurHorizontalNEON(src, dst, kernel, radius, startRow, endRow);
+    std::vector<int16_t> kf(kernel.size());
+    for (size_t i = 0; i < kernel.size(); ++i) {
+        kf[i] = static_cast<int16_t>(kernel[i] * 256.0f + 0.5f);
+    }
+#endif
+
+    pool.parallelFor(height, std::max(1, height / (pool.threadCount() * 4)),
+                     [&](int startRow, int endRow) {
+#if defined(__ARM_NEON__) || defined(__aarch64__)
+        blurHorizontalNEON(src, dst, kf, radius, startRow, endRow);
 #else
         blurHorizontalScalar(src, dst, kernel, radius, startRow, endRow);
 #endif
@@ -96,9 +104,17 @@ void blurVertical(const Bitmap& src, Bitmap& dst,
     ThreadPool& pool = ThreadPool::instance();
     int width = src.width;
 
-    pool.parallelFor(width, 1, [&](int startCol, int endCol) {
 #if defined(__ARM_NEON__) || defined(__aarch64__)
-        blurVerticalNEON(src, dst, kernel, radius, startCol, endCol);
+    std::vector<int16_t> kf(kernel.size());
+    for (size_t i = 0; i < kernel.size(); ++i) {
+        kf[i] = static_cast<int16_t>(kernel[i] * 256.0f + 0.5f);
+    }
+#endif
+
+    pool.parallelFor(width, std::max(1, width / (pool.threadCount() * 4)),
+                     [&](int startCol, int endCol) {
+#if defined(__ARM_NEON__) || defined(__aarch64__)
+        blurVerticalNEON(src, dst, kf, radius, startCol, endCol);
 #else
         blurVerticalScalar(src, dst, kernel, radius, startCol, endCol);
 #endif

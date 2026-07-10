@@ -27,31 +27,53 @@ BlurCache& BlurCache::instance() {
 }
 
 bool BlurCache::get(const BlurCacheKey& key, std::vector<uint8_t>& out) {
-    auto it = cache.find(key);
-    if (it != cache.end()) {
-        out = it->second;
+    std::lock_guard<std::mutex> lock(mutex);
+
+    auto it = index.find(key);
+    if (it != index.end()) {
+        auto listIt = it->second;
+        out = listIt->data;
+        lru.splice(lru.end(), lru, listIt);
         return true;
     }
     return false;
 }
 
 void BlurCache::put(BlurCacheKey key, const Bitmap& result) {
-    std::vector<uint8_t> copy(result.totalBytes());
-    std::memcpy(copy.data(), result.pixels, result.totalBytes());
-    cache[std::move(key)] = std::move(copy);
+    std::lock_guard<std::mutex> lock(mutex);
 
-    if (cache.size() > 16) {
-        auto oldest = cache.begin();
-        cache.erase(oldest);
+    auto it = index.find(key);
+    if (it != index.end()) {
+        lru.splice(lru.end(), lru, it->second);
+        std::memcpy(it->second->data.data(), result.pixels, result.totalBytes());
+        return;
+    }
+
+    Entry entry;
+    entry.key = key;
+    entry.data.resize(result.totalBytes());
+    std::memcpy(entry.data.data(), result.pixels, result.totalBytes());
+
+    lru.push_back(std::move(entry));
+    auto listIt = std::prev(lru.end());
+    index[key] = listIt;
+
+    while (lru.size() > MAX_ENTRIES) {
+        auto oldest = lru.front();
+        index.erase(oldest.key);
+        lru.pop_front();
     }
 }
 
 void BlurCache::clear() {
-    cache.clear();
+    std::lock_guard<std::mutex> lock(mutex);
+    index.clear();
+    lru.clear();
 }
 
 size_t BlurCache::size() const {
-    return cache.size();
+    std::lock_guard<std::mutex> lock(mutex);
+    return lru.size();
 }
 
 } // namespace blur
