@@ -1,26 +1,20 @@
 #include "gaussian.h"
 #include "kernel.h"
+#include "cache.h"
 #include "bitmap.h"
 #include <benchmark/benchmark.h>
 #include <vector>
-#include <algorithm>
+#include <cstring>
+#include <cstdint>
 
 using namespace blur;
 
-static std::vector<uint8_t> gBuffer;
-
-static Bitmap createTestBitmap(int size) {
-    gBuffer.resize(static_cast<size_t>(size) * static_cast<size_t>(size) * 4);
-
-    Bitmap bmp;
-    bmp.pixels = gBuffer.data();
-    bmp.width = size;
-    bmp.height = size;
-    bmp.stride = size * 4;
-    bmp.channels = 4;
-
+// Deterministic gradient so runs are reproducible and every pixel is distinct
+// (defeats any accidental content-dependent shortcut in the pipeline).
+static std::vector<uint8_t> makeGradient(int size) {
+    std::vector<uint8_t> buf(static_cast<size_t>(size) * static_cast<size_t>(size) * 4);
     for (int y = 0; y < size; ++y) {
-        uint8_t* row = bmp.getRow(y);
+        uint8_t* row = buf.data() + static_cast<size_t>(y) * static_cast<size_t>(size) * 4;
         for (int x = 0; x < size; ++x) {
             size_t off = static_cast<size_t>(x) * 4;
             row[off + 0] = static_cast<uint8_t>((x * 255) / size);
@@ -29,76 +23,121 @@ static Bitmap createTestBitmap(int size) {
             row[off + 3] = 255;
         }
     }
+    return buf;
+}
+
+static Bitmap wrap(std::vector<uint8_t>& buf, int size) {
+    Bitmap bmp;
+    bmp.pixels = buf.data();
+    bmp.width = size;
+    bmp.height = size;
+    bmp.stride = size * 4;
+    bmp.channels = 4;
     return bmp;
 }
 
-static void BM_GaussianBlur_256_Radius5(benchmark::State& state) {
-    auto bmp = createTestBitmap(256);
-    for (auto _ : state) {
-        gaussianBlur(bmp, 5);
-        benchmark::DoNotOptimize(bmp.pixels);
-    }
-}
-BENCHMARK(BM_GaussianBlur_256_Radius5)->Unit(benchmark::kMillisecond);
+// Honest per-frame blur cost. gaussianBlur() mutates in place and consults a
+// process-wide LRU cache, so a naive "blur the same buffer in a loop" measures
+// a cache hit on every iteration after the first — not the blur. Here each
+// iteration restores pristine (unblurred) input AND clears the cache, both
+// with timing paused, so what's measured is one cold blur of fresh content —
+// exactly what BlurView does per frame. PauseTiming overhead (~microseconds)
+// is negligible against blur times of 0.1 ms and up.
+static void BM_Blur(benchmark::State& state) {
+    const int size = static_cast<int>(state.range(0));
+    const int radius = static_cast<int>(state.range(1));
 
-static void BM_GaussianBlur_512_Radius5(benchmark::State& state) {
-    auto bmp = createTestBitmap(512);
-    for (auto _ : state) {
-        gaussianBlur(bmp, 5);
-        benchmark::DoNotOptimize(bmp.pixels);
-    }
-}
-BENCHMARK(BM_GaussianBlur_512_Radius5)->Unit(benchmark::kMillisecond);
+    const auto pristine = makeGradient(size);
+    std::vector<uint8_t> work = pristine;
+    Bitmap bmp = wrap(work, size);
 
-static void BM_GaussianBlur_512_Radius10(benchmark::State& state) {
-    auto bmp = createTestBitmap(512);
     for (auto _ : state) {
-        gaussianBlur(bmp, 10);
-        benchmark::DoNotOptimize(bmp.pixels);
-    }
-}
-BENCHMARK(BM_GaussianBlur_512_Radius10)->Unit(benchmark::kMillisecond);
+        state.PauseTiming();
+        std::memcpy(work.data(), pristine.data(), pristine.size());
+        BlurCache::instance().clear();
+        state.ResumeTiming();
 
-static void BM_GaussianBlur_1024_Radius5(benchmark::State& state) {
-    auto bmp = createTestBitmap(1024);
-    for (auto _ : state) {
-        gaussianBlur(bmp, 5);
+        gaussianBlur(bmp, radius);
         benchmark::DoNotOptimize(bmp.pixels);
+        benchmark::ClobberMemory();
     }
-}
-BENCHMARK(BM_GaussianBlur_1024_Radius5)->Unit(benchmark::kMillisecond);
 
-static void BM_GaussianBlur_1024_Radius15(benchmark::State& state) {
-    auto bmp = createTestBitmap(1024);
-    for (auto _ : state) {
-        gaussianBlur(bmp, 15);
-        benchmark::DoNotOptimize(bmp.pixels);
-    }
+    // items = pixels (=> items_per_second is pixels/s, read as MP/s),
+    // bytes = one full RGBA frame (=> bytes_per_second as a GB/s figure).
+    const int64_t pixels = static_cast<int64_t>(size) * static_cast<int64_t>(size);
+    state.SetItemsProcessed(state.iterations() * pixels);
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(pristine.size()));
 }
-BENCHMARK(BM_GaussianBlur_1024_Radius15)->Unit(benchmark::kMillisecond);
+// Args are grouped to make each performance claim independently measurable
+// (size, radius). Read the results as ratios within a group — those cancel
+// the host CPU and stay true across machines; the absolute ms do not.
+BENCHMARK(BM_Blur)
+    // Gaussian path (radius <= 5), fixed radius, swept resolution:
+    // expect ~O(N) growth in pixel count.
+    ->Args({256, 5})
+    ->Args({512, 5})
+    ->Args({1024, 5})
+    // Box path (radius > 5), fixed resolution, swept radius: box 3-pass is a
+    // sliding window, so cost should stay ~flat as radius grows (the headline
+    // "radius-independent" claim). radius 20/30 would trigger downscale under
+    // method=Gaussian, but the default Auto path takes box full-res first.
+    ->Args({1024, 6})
+    ->Args({1024, 10})
+    ->Args({1024, 15})
+    ->Args({1024, 20})
+    ->Args({1024, 30})
+    // Box path, fixed radius, swept resolution: expect ~O(N) in pixel count.
+    ->Args({256, 10})
+    ->Args({512, 10})
+    ->Args({2048, 10})
+    ->Args({4096, 10})
+    ->Unit(benchmark::kMillisecond)
+    // The blur fans out over a thread pool; the calling thread mostly blocks,
+    // so cpu_time measures ~nothing and wildly overstates throughput. Wall
+    // time is the real per-frame latency — make it the reported metric.
+    ->UseRealTime();
 
-static void BM_GaussianBlur_2048_Radius8(benchmark::State& state) {
-    auto bmp = createTestBitmap(2048);
-    for (auto _ : state) {
-        gaussianBlur(bmp, 8);
-        benchmark::DoNotOptimize(bmp.pixels);
-    }
-}
-BENCHMARK(BM_GaussianBlur_2048_Radius8)->Unit(benchmark::kMillisecond);
+// Explicit cache-hit path: a static background (unchanged content) blurred
+// repeatedly. Input is restored to the exact bytes that were cached, so every
+// iteration is a genuine hit regardless of the hash — this isolates the cost
+// of hashBitmap + lookup + copy-out, which is the real win when content is
+// stable frame to frame.
+static void BM_Blur_CacheHit(benchmark::State& state) {
+    const int size = static_cast<int>(state.range(0));
+    const int radius = static_cast<int>(state.range(1));
 
-static void BM_GaussianBlur_4096_Radius8(benchmark::State& state) {
-    auto bmp = createTestBitmap(4096);
+    const auto pristine = makeGradient(size);
+    std::vector<uint8_t> work = pristine;
+    Bitmap bmp = wrap(work, size);
+
+    BlurCache::instance().clear();
+    gaussianBlur(bmp, radius); // populate: key = hash(pristine)
+
     for (auto _ : state) {
-        gaussianBlur(bmp, 8);
+        state.PauseTiming();
+        std::memcpy(work.data(), pristine.data(), pristine.size());
+        state.ResumeTiming();
+
+        gaussianBlur(bmp, radius); // hash(pristine) -> hit
         benchmark::DoNotOptimize(bmp.pixels);
+        benchmark::ClobberMemory();
     }
+
+    const int64_t pixels = static_cast<int64_t>(size) * static_cast<int64_t>(size);
+    state.SetItemsProcessed(state.iterations() * pixels);
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(pristine.size()));
 }
-BENCHMARK(BM_GaussianBlur_4096_Radius8)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_Blur_CacheHit)
+    ->Args({512, 10})
+    ->Args({1024, 15})
+    ->Unit(benchmark::kMicrosecond)
+    ->UseRealTime();
 
 static void BM_KernelGeneration_Radius10(benchmark::State& state) {
     for (auto _ : state) {
         auto kernel = generateGaussianKernel(10);
         benchmark::DoNotOptimize(kernel.data());
+        benchmark::ClobberMemory();
     }
 }
 BENCHMARK(BM_KernelGeneration_Radius10);

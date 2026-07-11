@@ -56,7 +56,7 @@
   "scripts": {
     "example": "cd example && npx react-native run-android",
     "test:cpp": "cd blur-core && mkdir -p build && cd build && cmake .. -DBLUR_BUILD_TESTS=ON && cmake --build . && ctest --output-on-failure",
-    "benchmark": "cd blur-core && mkdir -p build && cd build && cmake .. -DBLUR_BUILD_BENCHMARKS=ON && cmake --build . && ./blur-bench",
+    "benchmark": "cd blur-core && mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DBLUR_BUILD_BENCHMARKS=ON && cmake --build . && ./blur-bench --benchmark_min_time=0.2s --benchmark_repetitions=10 --benchmark_report_aggregates_only=true",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   }
