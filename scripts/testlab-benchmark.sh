@@ -55,24 +55,26 @@ command -v gcloud >/dev/null || {
   exit 1
 }
 
-# Device matrix: low-end -> recent, all arm64 (the NEON path). Model IDs and
-# available API levels drift over time — list current physical devices with:
+# Device matrix: budget -> mid -> flagship, all arm64 (the NEON path). Model
+# IDs and available API levels drift over time (the previous default list —
+# redfin/oriole/shiba — was already stale by the time this was tested) — list
+# current physical devices before trusting these defaults:
 #   gcloud firebase test android models list --filter="form=PHYSICAL"
 # Override this whole list by exporting TESTLAB_DEVICES (space-separated flags).
+# Verified against the catalog and run successfully as of 2026-07-11.
 if [[ -n "${TESTLAB_DEVICES:-}" ]]; then
   read -r -a devices <<< "$TESTLAB_DEVICES"
 else
   devices=(
-    --device model=redfin,version=30    # Pixel 5   — older mid-range
-    --device model=oriole,version=33    # Pixel 6   — mid-range
-    --device model=shiba,version=34     # Pixel 8   — recent flagship
+    --device model=a06,version=35       # Galaxy A06     — budget
+    --device model=SC-53C,version=36    # Galaxy A53 5G  — mid-range
+    --device model=caiman,version=35    # Pixel 9 Pro    — flagship
   )
 fi
 
 # Self-instrumenting library test: the androidTest APK contains BOTH the code
-# under test and the tests, so it is passed as --app and --test. If Test Lab
-# rejects the same APK for both, the fallback is to add a minimal host app
-# module and pass its APK as --app.
+# under test and the tests, so it is passed as --app and --test. Confirmed
+# working this way (no separate host-app module needed) as of 2026-07-11.
 echo "==> Launching Test Lab run on ${GCLOUD_PROJECT}"
 gcloud firebase test android run \
   --project "$GCLOUD_PROJECT" \
