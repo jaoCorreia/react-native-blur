@@ -72,24 +72,34 @@ else
   )
 fi
 
+# REPEATS: how many times to run the full device matrix. A single run per
+# device is noisy (one Test Lab invocation, one point in the device's thermal/
+# load history) — repeat and look at the spread, not just one number.
+REPEATS="${REPEATS:-1}"
+
 # Self-instrumenting library test: the androidTest APK contains BOTH the code
 # under test and the tests, so it is passed as --app and --test. Confirmed
 # working this way (no separate host-app module needed) as of 2026-07-11.
-echo "==> Launching Test Lab run on ${GCLOUD_PROJECT}"
-gcloud firebase test android run \
-  --project "$GCLOUD_PROJECT" \
-  --type instrumentation \
-  --app "$APK" \
-  --test "$APK" \
-  --test-targets "class com.blur.BlurBenchmark" \
-  --timeout 15m \
-  "${devices[@]}"
+for ((run = 1; run <= REPEATS; run++)); do
+  echo "==> Launching Test Lab run ${run}/${REPEATS} on ${GCLOUD_PROJECT}"
+  gcloud firebase test android run \
+    --project "$GCLOUD_PROJECT" \
+    --type instrumentation \
+    --app "$APK" \
+    --test "$APK" \
+    --test-targets "class com.blur.BlurBenchmark" \
+    --timeout 15m \
+    "${devices[@]}"
+done
 
-cat <<'EOF'
+cat <<EOF
 
-==> Done. Each device's numbers are in the captured logcat.
-    In the Firebase console (Test Lab) or the GCS results bucket printed above,
-    open the logcat artifact and grep for "BlurBench" — one JSON object per
-    (size, radius) with cold_ms_median and cachehit_ms_median, plus a BEGIN
-    line naming the device/API/ABI.
+==> Done: ${REPEATS} run(s) across ${#devices[@]} device flag(s).
+    Each device's numbers are in its captured logcat. In the Firebase console
+    (Test Lab) or the GCS results bucket printed above, open the logcat
+    artifact and grep for "BlurBench" — one JSON object per (size, radius)
+    with cold_ms_median and cachehit_ms_median, a SEED line (case order was
+    randomized to decorrelate DVFS ramp-up from radius), and a BEGIN line
+    naming the device/API/ABI. Match SEED to BEGIN/END within a single run's
+    log to keep runs from different repeats separate.
 EOF

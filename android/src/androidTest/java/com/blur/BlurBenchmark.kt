@@ -28,6 +28,15 @@ import org.junit.runner.RunWith
  *   --test-targets "class com.blur.BlurBenchmark"
  * Results are emitted to logcat under the tag "BlurBench" as one JSON object
  * per case, plus a summary line — parse those from the captured log.
+ *
+ * DVFS note: a single-run Test Lab pass previously showed box radius 6 (the
+ * first case in the box sweep) costing 10-20% more than radius 10/15 tested
+ * right after it — consistent with the CPU governor still ramping up from
+ * idle rather than any property of the algorithm. Two mitigations: (1) a
+ * fixed CPU warmup that runs before any timed case to get the governor to a
+ * steady clock, and (2) randomizing case order per invocation (seed logged)
+ * so "tested first" doesn't correlate with any one radius across repeated
+ * runs.
  */
 @RunWith(AndroidJUnit4::class)
 class BlurBenchmark {
@@ -36,6 +45,7 @@ class BlurBenchmark {
         private const val TAG = "BlurBench"
         private const val WARMUP = 3
         private const val ITERATIONS = 11 // odd -> unambiguous median
+        private const val CPU_WARMUP_MS = 1500L
     }
 
     @Before
@@ -105,16 +115,44 @@ class BlurBenchmark {
         )
     }
 
+    // Spins the CPU on a throwaway blur for a fixed wall-clock duration before any
+    // timed case runs, so the governor is at a steady clock rather than ramping
+    // up during the (position-dependent) first few timed cases.
+    private fun cpuWarmup() {
+        val size = 1024
+        val pristine = pristinePixels(size)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val deadline = System.nanoTime() + CPU_WARMUP_MS * 1_000_000
+        while (System.nanoTime() < deadline) {
+            bitmap.setPixels(pristine, 0, size, 0, 0, size, size)
+            NativeBlur.clearCache()
+            NativeBlur.applyBlur(bitmap, 10)
+        }
+        bitmap.recycle()
+    }
+
     @Test
     fun benchmarkBlur() {
         Log.i(TAG, "BEGIN device=${android.os.Build.MODEL} api=${android.os.Build.VERSION.SDK_INT} abi=${android.os.Build.SUPPORTED_ABIS.firstOrNull()}")
 
-        // Gaussian path (radius <= 5): resolution scaling.
-        for (size in intArrayOf(256, 512, 1024)) benchCase(size, 5)
-        // Box path (radius > 5): radius sweep at fixed resolution (independence)...
-        for (radius in intArrayOf(6, 10, 15)) benchCase(1024, radius)
-        // ...and resolution sweep at fixed radius (O(N)). 4096 left out: memory/time on low-end phones.
-        for (size in intArrayOf(256, 512, 2048)) benchCase(size, 10)
+        cpuWarmup()
+
+        // All cases in one pool, order randomized per invocation so "tested first"
+        // (and any residual DVFS ramp) doesn't correlate with a particular radius
+        // across repeated runs. Seed is logged for reproducibility.
+        val cases = buildList {
+            // Gaussian path (radius <= 5): resolution scaling.
+            for (size in intArrayOf(256, 512, 1024)) add(size to 5)
+            // Box path (radius > 5): radius sweep at fixed resolution (independence)...
+            for (radius in intArrayOf(6, 10, 15)) add(1024 to radius)
+            // ...and resolution sweep at fixed radius (O(N)). 4096 left out: memory/time on low-end phones.
+            for (size in intArrayOf(256, 512, 2048)) add(size to 10)
+        }
+        val seed = System.nanoTime()
+        val shuffled = cases.shuffled(java.util.Random(seed))
+        Log.i(TAG, "SEED $seed")
+
+        for ((size, radius) in shuffled) benchCase(size, radius)
 
         Log.i(TAG, "END")
     }

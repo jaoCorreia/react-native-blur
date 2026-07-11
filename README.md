@@ -177,26 +177,26 @@ Not hand-written here, because a single machine's ms would just be another misle
 
 ### Real phones (Firebase Test Lab)
 
-> Sourced from the on-device benchmark added in [#2](https://github.com/jaoCorreia/react-native-blur/pull/2) (`scripts/testlab-benchmark.sh` + `android/src/androidTest/java/com/blur/BlurBenchmark.kt`) — merge that alongside this PR for the referenced files to exist on `main`.
+> Sourced from the on-device benchmark added in [#2](https://github.com/jaoCorreia/react-native-blur/pull/2) (`scripts/testlab-benchmark.sh` + `android/src/androidTest/java/com/blur/BlurBenchmark.kt`).
 
-Ran once via `scripts/testlab-benchmark.sh` + the on-device harness (`BlurBenchmark.kt`), which calls `NativeBlur.applyBlur` directly (bypassing `BlurView`'s API 31+ GPU path, so it always exercises the C++/NEON blur) using the same cold/cache-hit methodology as the C++ harness. This is a snapshot, not a live CI artifact — re-run the script for current numbers; don't treat these as pinned.
+An initial single Test Lab run (one iteration set per device) suggested Box radius 6 was *faster* than Gaussian radius 5 on the A53/Pixel and slower only on the A06 — seemingly a device-dependent crossover. That didn't hold up: it was re-run 3× per device with two fixes — a fixed-duration CPU warmup before any timed case (so the governor reaches a steady clock first) and randomized case order per run (so "tested first" can't correlate with a specific radius) — because the single-run data had Box radius 6 (tested first in that sweep) reading 10–20% high, consistent with DVFS ramp-up rather than the algorithm. Medians across the 3 corrected runs:
 
-Box path, radius 10, cold blur, median of 11 runs:
+Box path, radius 10, cold blur, median of 11 iterations × 3 runs:
 
 | Device (tier) | 256² | 512² | 1024² | 2048² | Cache hit (512²) |
 |---|---|---|---|---|---|
-| Galaxy A06 (`SM-A065M`, budget) | 40.0 ms | 149.4 ms | 619.1 ms | 2304.4 ms | 0.36 ms (**~410×**) |
-| Galaxy A53 5G (`SC-53C`, mid) | 32.0 ms | 104.3 ms | 377.1 ms | 1335.4 ms | 0.36 ms (**~290×**) |
-| Pixel 9 Pro (`caiman`, flagship) | 39.8 ms | 67.1 ms | 249.3 ms | 930.2 ms | 0.06 ms (**~1080×**) |
+| Galaxy A06 (`SM-A065M`, budget) | 43.2 ms | 174.8 ms | 694.3 ms | 2954.2 ms | 0.40 ms (**~440×**) |
+| Galaxy A53 5G (`SC-53C`, mid) | 28.5 ms | 116.7 ms | 352.9 ms | 1392.8 ms | 0.30 ms (**~390×**) |
+| Pixel 9 Pro (`caiman`, flagship) | 25.8 ms | 84.4 ms | 245.7 ms | 956.3 ms | 0.06 ms (**~1380×**) |
 
 Two things this reveals that the CI/laptop numbers couldn't:
 
-- **The cache-hit ratio is bigger on phones than on desktop/CI (~290–1080× vs ~60–90×).** The cache-hit path is bandwidth-bound (hash + memcpy); the cold blur is compute-bound. Phone CPU cores are relatively weaker per-core than a desktop/server core, so the compute side gets relatively more expensive while the memcpy side doesn't — widening the gap. A static background benefits from the cache even more on a phone than these ratios' desktop origin would suggest.
-- **The Gaussian(r5)-vs-Box(r6) ordering is device-dependent, not universal.** On the A53 and Pixel 9 Pro, Box radius 6 (446 ms, 276 ms) was *faster* than Gaussian radius 5 (689 ms, 317 ms) — box winning earlier than desktop measurements suggested. On the A06, it was the reverse (Box 6 = 751 ms > Gaussian 5 = 612 ms), matching the desktop finding. The `radius > 5 → box` threshold isn't uniformly pessimal or optimal across real hardware — retune it per measured crossover, not from one machine's numbers.
+- **The cache-hit ratio is bigger on phones than on desktop/CI (~390–1380× vs ~60–90×).** The cache-hit path is bandwidth-bound (hash + memcpy); the cold blur is compute-bound. Phone CPU cores are relatively weaker per-core than a desktop/server core, so the compute side gets relatively more expensive while the memcpy side doesn't — widening the gap. A static background benefits from the cache even more on a phone than these ratios' desktop origin would suggest.
+- **The Gaussian(r5)-vs-Box(r6) ordering is *not* device-dependent once DVFS noise and single-run variance are controlled for.** Median-of-3 at 1024², Box radius 6 vs Gaussian radius 5: A06 704.9 ms vs 412.9 ms (**Box ~1.7× slower**), A53 348.1 ms vs 307.9 ms (**Box ~13% slower**), Pixel 269.2 ms vs 240.6 ms (**Box ~12% slower**). Box is never actually faster on any of the three devices — the earlier single-run "Box wins on A53/Pixel" reading was a Gaussian-side measurement outlier (that run's Gaussian r5 on the A53 read 576 ms vs ~293–308 ms on the other two runs), not a real hardware effect. The gap does shrink from budget → flagship (1.7× → ~1.12×), so the `radius > 5 → box` threshold isn't leaving obvious perf on the table anywhere it was tested; changing it now, based on the retracted single-run data, would have been a regression.
 
-A smaller caveat: across all three devices, Box radius 6 (run first in the sequence) measured ~10–20% above radius 10/15 (run after), likely CPU frequency governor ramp-up under sustained load rather than an algorithmic effect — the "radius-independent" claim holds once warmed up, less cleanly for the very first call in a burst.
+Given that, `boxBlur3Pass()` is still pure scalar (no NEON/AVX2 variant) — SIMD-accelerating its inner loop is the more promising lever than moving the threshold, since it would shrink or close the ~1.1–1.7× gap (most on budget hardware, where it's largest) rather than just trading which algorithm loses at a different cutoff. Not done here; flagged as follow-up work.
 
-For your own hardware, `npm run benchmark` (desktop/laptop) or `scripts/testlab-benchmark.sh` (phones) are the source of truth.
+For your own hardware, `npm run benchmark` (desktop/laptop) or `scripts/testlab-benchmark.sh` (phones, `REPEATS=N` to control run count) are the source of truth.
 
 ### Comparison with other approaches (512×512, radius 10)
 
