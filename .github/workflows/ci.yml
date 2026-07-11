@@ -34,8 +34,19 @@ jobs:
         run: cd build && ctest --output-on-failure -V
 
   cpp-benchmarks:
-    name: C++ Benchmarks
-    runs-on: ubuntu-latest
+    name: C++ Benchmarks (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          # Free GitHub-hosted arm64 runner: compiles and runs the NEON path
+          # natively (no QEMU), so these numbers are representative of real
+          # ARM devices in a way the x86_64 AVX2 numbers are not.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -54,8 +65,88 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      # Aggregate over repetitions so the artifact carries mean/median/stddev,
+      # not a single noisy sample. min_time keeps each repetition long enough
+      # that shared-runner scheduling jitter averages out.
       - name: Run benchmarks
-        run: ./build/blur-bench --benchmark_min_time=0.01
+        run: |
+          ./build/blur-bench \
+            --benchmark_min_time=0.2s \
+            --benchmark_repetitions=10 \
+            --benchmark_report_aggregates_only=true \
+            --benchmark_out=benchmark-${{ matrix.arch }}.json \
+            --benchmark_out_format=json
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ matrix.arch }}
+          path: benchmark-${{ matrix.arch }}.json
+
+  benchmark-regression:
+    name: Benchmark Regression (PR vs base)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # python3-scipy/numpy back Google Benchmark's tools/compare.py, which
+      # runs a Mann-Whitney U-test on the two repetition sets and reports a
+      # p-value per benchmark — a real significance test, not eyeballing means.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3-scipy python3-numpy
+
+      - name: Build + run PR benchmark
+        run: |
+          cmake -B build-pr -S blur-core -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DBENCHMARK_ENABLE_TESTING=OFF \
+            -DBLUR_BUILD_BENCHMARKS=ON
+          cmake --build build-pr
+          # No aggregates-only here: compare.py needs the per-repetition
+          # samples to run the U-test. 10 reps clears its "9+ recommended" bar.
+          ./build-pr/blur-bench \
+            --benchmark_min_time=0.2s \
+            --benchmark_repetitions=10 \
+            --benchmark_out=pr.json --benchmark_out_format=json
+
+      # compare.py lives in the benchmark source FetchContent just downloaded;
+      # copy it out so it survives the checkout of the base commit below.
+      - name: Stash comparison tooling
+        run: cp -r build-pr/_deps/googlebenchmark-src/tools benchmark-tools
+
+      - name: Build + run base benchmark
+        run: |
+          git checkout ${{ github.event.pull_request.base.sha }}
+          cmake -B build-base -S blur-core -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DBENCHMARK_ENABLE_TESTING=OFF \
+            -DBLUR_BUILD_BENCHMARKS=ON
+          cmake --build build-base
+          ./build-base/blur-bench \
+            --benchmark_min_time=0.2s \
+            --benchmark_repetitions=10 \
+            --benchmark_out=base.json --benchmark_out_format=json || true
+
+      # Informational, not a hard gate: perf on shared runners is too noisy to
+      # fail a build on, and when a PR renames benchmarks (like the one that
+      # introduced this job) there's nothing to line up. Results land in the
+      # PR's job summary. Benchmarks present in both files are compared with a
+      # U-test; new/removed ones are listed separately.
+      - name: Compare base vs PR
+        run: |
+          {
+            echo '## Benchmark: base vs PR'
+            echo '```'
+            python3 benchmark-tools/compare.py benchmarks base.json pr.json || echo '(no comparable benchmarks — likely a harness change)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   address-sanitizer:
     name: Address Sanitizer
