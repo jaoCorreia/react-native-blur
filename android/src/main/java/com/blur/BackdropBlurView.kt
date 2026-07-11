@@ -26,15 +26,16 @@ import kotlin.math.max
 
 /**
  * A glassmorphic panel that shows a **blurred copy of what's behind it** —
- * specifically the content of a target [SurfaceView] (e.g. a MapLibre map).
+ * specifically the content of a target [SurfaceView] (a map, a video, a camera
+ * preview, custom GL).
  *
  * Why this exists and why it's not the same as [BlurView]: `BlurView` blurs
- * its own children. A panel over a live map needs *backdrop* blur — the map
- * pixels behind the panel, blurred, with the panel's own content sharp on top.
- * And the map is GPU-rendered into a `SurfaceView` (GLSurfaceView), which a
- * `Canvas` cannot read at all — so the only way to get those pixels is
- * [PixelCopy] (API 24+), a GPU->CPU readback. That readback, not the blur, is
- * the real cost, so we capture at a downscale.
+ * its own children. A panel over live GPU content needs *backdrop* blur — the
+ * SurfaceView pixels behind the panel, blurred, with the panel's own content
+ * sharp on top. And that content is GPU-rendered into a `SurfaceView` (e.g. a
+ * map's GLSurfaceView), which a `Canvas` cannot read at all — so the only way
+ * to get those pixels is [PixelCopy] (API 24+), a GPU->CPU readback. That
+ * readback, not the blur, is the real cost, so we capture at a downscale.
  *
  * The blur backend is chosen per API level:
  *  - **31+ (Android 12):** GPU [RenderEffect] on a [RenderNode] — no CPU blur,
@@ -43,8 +44,8 @@ import kotlin.math.max
  *  - **21–23:** no PixelCopy available -> falls back to a translucent scrim
  *    ([overlayColor]); there is no true backdrop blur on these versions.
  *
- * The map moves, so the blurred backdrop trails the sharp map by a frame or
- * two (PixelCopy is async) and is captured at low resolution — an accepted
+ * When the content moves, the blurred backdrop trails it by a frame or two
+ * (PixelCopy is async) and is captured at low resolution — an accepted
  * tradeoff, see README. Children (the panel content) are drawn sharp on top.
  */
 class BackdropBlurView(context: Context) : FrameLayout(context) {

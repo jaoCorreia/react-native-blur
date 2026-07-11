@@ -34,15 +34,16 @@ export interface BackdropBlurViewProps extends ViewProps {
 }
 
 /**
- * A panel that blurs whatever GPU SurfaceView sits behind it — built for a
- * glassmorphic panel over a live MapLibre map. Unlike {@link BlurView} (which
- * blurs its own children), this does *backdrop* blur: the map behind the panel
- * is blurred, the panel's children render sharp on top.
+ * A panel that blurs whatever GPU SurfaceView sits behind it — a glassmorphic
+ * panel over live GPU content (a map, a video, a camera preview). Unlike
+ * {@link BlurView} (which blurs its own children), this does *backdrop* blur:
+ * the SurfaceView behind the panel is blurred, the panel's children render
+ * sharp on top.
  *
  * Android only. The blur backend is chosen per OS version (GPU RenderEffect on
  * 12+, C++/NEON on 7–11, a translucent scrim below that). On other platforms
  * it renders as a plain View. See the native `BackdropBlurView` for the
- * capture/latency tradeoffs of blurring a moving map.
+ * capture/latency tradeoffs of blurring moving content.
  */
 const BackdropBlurView: React.FC<BackdropBlurViewProps> = ({
   blurRadius = 16,
