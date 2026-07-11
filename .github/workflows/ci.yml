@@ -199,6 +199,8 @@ jobs:
       # Compiles the Kotlin view manager and cross-compiles blur-core for
       # every ABI (including arm64-v8a/armeabi-v7a, i.e. the real NEON path)
       # through the actual NDK toolchain — nothing in the C++-only CI jobs
-      # touches the Android/Kotlin side at all.
-      - name: Assemble debug AAR
-        run: gradle -p android assembleDebug --no-daemon
+      # touches the Android/Kotlin side at all. assembleDebugAndroidTest also
+      # compiles the instrumentation sources (incl. the on-device benchmark)
+      # so they can't rot — CI has no emulator, so this compiles but won't run.
+      - name: Assemble debug AAR + androidTest APK
+        run: gradle -p android assembleDebug assembleDebugAndroidTest --no-daemon

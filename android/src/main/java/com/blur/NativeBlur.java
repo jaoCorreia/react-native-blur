@@ -42,7 +42,15 @@ public class NativeBlur {
         return nativeGetVersion();
     }
 
+    /** Empties the native blur cache. Primarily for benchmarks that need a cold blur each run. */
+    public static void clearCache() {
+        if (!libraryLoaded) return;
+        nativeClearCache();
+    }
+
     private static native void nativeApplyBlur(Bitmap bitmap, int radius, float sigma);
 
     private static native String nativeGetVersion();
+
+    private static native void nativeClearCache();
 }
