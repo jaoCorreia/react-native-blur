@@ -175,7 +175,28 @@ Not hand-written here, because a single machine's ms would just be another misle
 - `benchmark-arm64` — `ubuntu-24.04-arm` runner, the **NEON path** phones actually use. A server-class ARM core is several times faster than a typical phone, so read it as a *relative* reference, not a phone budget.
 - `benchmark-x86_64` — `ubuntu-latest`, the AVX2 path (emulator / desktop).
 
-Representative *phone* numbers (real devices, via Firebase Test Lab) are planned. For your own hardware, `npm run benchmark` is the source of truth.
+### Real phones (Firebase Test Lab)
+
+> Sourced from the on-device benchmark added in [#2](https://github.com/jaoCorreia/react-native-blur/pull/2) (`scripts/testlab-benchmark.sh` + `android/src/androidTest/java/com/blur/BlurBenchmark.kt`) — merge that alongside this PR for the referenced files to exist on `main`.
+
+Ran once via `scripts/testlab-benchmark.sh` + the on-device harness (`BlurBenchmark.kt`), which calls `NativeBlur.applyBlur` directly (bypassing `BlurView`'s API 31+ GPU path, so it always exercises the C++/NEON blur) using the same cold/cache-hit methodology as the C++ harness. This is a snapshot, not a live CI artifact — re-run the script for current numbers; don't treat these as pinned.
+
+Box path, radius 10, cold blur, median of 11 runs:
+
+| Device (tier) | 256² | 512² | 1024² | 2048² | Cache hit (512²) |
+|---|---|---|---|---|---|
+| Galaxy A06 (`SM-A065M`, budget) | 40.0 ms | 149.4 ms | 619.1 ms | 2304.4 ms | 0.36 ms (**~410×**) |
+| Galaxy A53 5G (`SC-53C`, mid) | 32.0 ms | 104.3 ms | 377.1 ms | 1335.4 ms | 0.36 ms (**~290×**) |
+| Pixel 9 Pro (`caiman`, flagship) | 39.8 ms | 67.1 ms | 249.3 ms | 930.2 ms | 0.06 ms (**~1080×**) |
+
+Two things this reveals that the CI/laptop numbers couldn't:
+
+- **The cache-hit ratio is bigger on phones than on desktop/CI (~290–1080× vs ~60–90×).** The cache-hit path is bandwidth-bound (hash + memcpy); the cold blur is compute-bound. Phone CPU cores are relatively weaker per-core than a desktop/server core, so the compute side gets relatively more expensive while the memcpy side doesn't — widening the gap. A static background benefits from the cache even more on a phone than these ratios' desktop origin would suggest.
+- **The Gaussian(r5)-vs-Box(r6) ordering is device-dependent, not universal.** On the A53 and Pixel 9 Pro, Box radius 6 (446 ms, 276 ms) was *faster* than Gaussian radius 5 (689 ms, 317 ms) — box winning earlier than desktop measurements suggested. On the A06, it was the reverse (Box 6 = 751 ms > Gaussian 5 = 612 ms), matching the desktop finding. The `radius > 5 → box` threshold isn't uniformly pessimal or optimal across real hardware — retune it per measured crossover, not from one machine's numbers.
+
+A smaller caveat: across all three devices, Box radius 6 (run first in the sequence) measured ~10–20% above radius 10/15 (run after), likely CPU frequency governor ramp-up under sustained load rather than an algorithmic effect — the "radius-independent" claim holds once warmed up, less cleanly for the very first call in a burst.
+
+For your own hardware, `npm run benchmark` (desktop/laptop) or `scripts/testlab-benchmark.sh` (phones) are the source of truth.
 
 ### Comparison with other approaches (512×512, radius 10)
 
