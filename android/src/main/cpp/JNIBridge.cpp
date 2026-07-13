@@ -3,6 +3,7 @@
 #include <android/log.h>
 #include "gaussian.h"
 #include "bitmap.h"
+#include "cache.h"
 #include <cstring>
 
 #define LOG_TAG "NativeBlur"
@@ -66,4 +67,17 @@ Java_com_blur_NativeBlur_nativeGetVersion(
     jobject /* this */
 ) {
     return env->NewStringUTF("1.0.0");
+}
+
+// Empties the process-wide blur LRU. Exists so a benchmark can force a cold
+// blur each iteration — without it, re-blurring identical content on-device
+// hits the cache and measures the lookup, not the blur (the same trap the
+// C++ harness avoids).
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_blur_NativeBlur_nativeClearCache(
+    JNIEnv* /* env */,
+    jobject /* this */
+) {
+    blur::BlurCache::instance().clear();
 }
