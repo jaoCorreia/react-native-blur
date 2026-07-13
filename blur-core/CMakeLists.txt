@@ -40,6 +40,9 @@ if(BLUR_HAS_AVX2_SOURCE)
     set_source_files_properties(src/avx2/gaussian_avx2.cpp PROPERTIES
         COMPILE_OPTIONS "-mavx2"
     )
+    set_source_files_properties(src/boxblur.cpp PROPERTIES
+        COMPILE_OPTIONS "-msse4.1"
+    )
 endif()
 
 target_include_directories(blur-core PUBLIC

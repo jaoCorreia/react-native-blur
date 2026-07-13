@@ -7,7 +7,15 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(__SSE4_1__) || defined(__AVX2__)
+#include <smmintrin.h>
+#elif defined(__ARM_NEON__) || defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 namespace blur {
+
+static constexpr int PREFETCH_DIST = 4;
 
 int boxRadiusFromGaussian(int gaussianRadius) {
     if (gaussianRadius <= 3) return 0;
@@ -27,45 +35,57 @@ static void boxBlurHorizontal(const Bitmap& src, Bitmap& dst, int radius,
         int sum[4] = {0, 0, 0, 0};
         int count = 0;
 
-        // Preload the window for the position just before x=0, i.e.
-        // [-1-radius, -1+radius] clamped to [0, width-1] = [0, radius-1].
-        // Using `radius` here (instead of `radius - 1`) double-counts
-        // position `radius` itself, since the x=0 iteration below also adds
-        // it via `newRight` — inflating the denominator by one for every
-        // position in the row, not just near this edge.
         int initEnd = std::min(radius - 1, width - 1);
         for (int i = 0; i <= initEnd; ++i) {
-            for (int c = 0; c < channels; ++c) {
-                sum[c] += srcRow[i * channels + c];
-            }
+            const uint8_t* p = srcRow + static_cast<ptrdiff_t>(i) * channels;
+            for (int c = 0; c < channels; ++c) sum[c] += p[c];
             count++;
         }
 
         for (int x = 0; x < width; ++x) {
             int newRight = x + radius;
             if (newRight < width) {
-                const uint8_t* p = srcRow + newRight * channels;
+                const uint8_t* p = srcRow + static_cast<ptrdiff_t>(newRight) * channels;
+#if defined(__SSE4_1__) || defined(__AVX2__)
+                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)p));
+                __m128i s = _mm_loadu_si128((const __m128i*)sum);
+                _mm_storeu_si128((__m128i*)sum, _mm_add_epi32(s, px));
+#elif defined(__ARM_NEON__) || defined(__aarch64__)
+                uint8x8_t px8 = vld1_u8(p);
+                int32x4_t px32 = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(vmovl_u8(px8))));
+                int32x4_t s = vld1q_s32(sum);
+                vst1q_s32(sum, vaddq_s32(s, px32));
+#else
                 for (int c = 0; c < channels; ++c) sum[c] += p[c];
+#endif
                 count++;
             }
 
             int oldLeft = x - radius - 1;
             if (oldLeft >= 0) {
-                const uint8_t* p = srcRow + oldLeft * channels;
+                const uint8_t* p = srcRow + static_cast<ptrdiff_t>(oldLeft) * channels;
+#if defined(__SSE4_1__) || defined(__AVX2__)
+                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)p));
+                __m128i s = _mm_loadu_si128((const __m128i*)sum);
+                _mm_storeu_si128((__m128i*)sum, _mm_sub_epi32(s, px));
+#elif defined(__ARM_NEON__) || defined(__aarch64__)
+                uint8x8_t px8 = vld1_u8(p);
+                int32x4_t px32 = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(vmovl_u8(px8))));
+                int32x4_t s = vld1q_s32(sum);
+                vst1q_s32(sum, vsubq_s32(s, px32));
+#else
                 for (int c = 0; c < channels; ++c) sum[c] -= p[c];
+#endif
                 count--;
             }
 
-            uint8_t* dstPixel = dstRow + x * channels;
-            for (int c = 0; c < channels; ++c) {
+            uint8_t* dstPixel = dstRow + static_cast<ptrdiff_t>(x) * channels;
+            for (int c = 0; c < channels; ++c)
                 dstPixel[c] = static_cast<uint8_t>(std::clamp(sum[c] / count, 0, 255));
-            }
         }
     }
 }
 
-// y-major sweep: keeps a running sum per column so each row is read once,
-// sequentially, instead of striding through the image once per column.
 static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
                              int startCol, int endCol) {
     int height = src.height;
@@ -75,12 +95,19 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
 
     std::vector<int> colSum(static_cast<size_t>(rowWidth), 0);
 
-    // See the matching comment in boxBlurHorizontal: this preloads the
-    // window for y=-1, which is [0, radius-1], not [0, radius].
     int initEnd = std::min(radius - 1, height - 1);
     for (int i = 0; i <= initEnd; ++i) {
         const uint8_t* row = src.getRowConst(i) + static_cast<ptrdiff_t>(startCol) * channels;
-        for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] += row[x];
+#if defined(__SSE4_1__) || defined(__AVX2__)
+        for (int x = 0; x < rowWidth; x += channels) {
+            __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)(row + x)));
+            __m128i s = _mm_loadu_si128((const __m128i*)(&colSum[static_cast<size_t>(x)]));
+            _mm_storeu_si128((__m128i*)(&colSum[static_cast<size_t>(x)]), _mm_add_epi32(s, px));
+        }
+#else
+        for (int x = 0; x < rowWidth; ++x)
+            colSum[static_cast<size_t>(x)] += row[x];
+#endif
     }
     int count = initEnd + 1;
 
@@ -88,20 +115,48 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
         int newBottom = y + radius;
         if (newBottom < height) {
             const uint8_t* row = src.getRowConst(newBottom) + static_cast<ptrdiff_t>(startCol) * channels;
-            for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] += row[x];
+
+#if defined(__SSE4_1__) || defined(__AVX2__)
+            for (int x = 0; x < rowWidth; x += channels) {
+                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)(row + x)));
+                __m128i s = _mm_loadu_si128((const __m128i*)(&colSum[static_cast<size_t>(x)]));
+                _mm_storeu_si128((__m128i*)(&colSum[static_cast<size_t>(x)]), _mm_add_epi32(s, px));
+            }
+#else
+            for (int x = 0; x < rowWidth; ++x)
+                colSum[static_cast<size_t>(x)] += row[x];
+#endif
             count++;
         }
 
         int oldTop = y - radius - 1;
         if (oldTop >= 0) {
             const uint8_t* row = src.getRowConst(oldTop) + static_cast<ptrdiff_t>(startCol) * channels;
-            for (int x = 0; x < rowWidth; ++x) colSum[static_cast<size_t>(x)] -= row[x];
+#if defined(__SSE4_1__) || defined(__AVX2__)
+            for (int x = 0; x < rowWidth; x += channels) {
+                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)(row + x)));
+                __m128i s = _mm_loadu_si128((const __m128i*)(&colSum[static_cast<size_t>(x)]));
+                _mm_storeu_si128((__m128i*)(&colSum[static_cast<size_t>(x)]), _mm_sub_epi32(s, px));
+            }
+#else
+            for (int x = 0; x < rowWidth; ++x)
+                colSum[static_cast<size_t>(x)] -= row[x];
+#endif
             count--;
         }
 
+        int nextFetchY = y + PREFETCH_DIST;
+        if (nextFetchY < height) {
+            const uint8_t* nextRow = src.getRowConst(nextFetchY) + static_cast<ptrdiff_t>(startCol) * channels;
+            __builtin_prefetch(nextRow, 0, 0);
+        }
+
         uint8_t* dstRow = dst.getRow(y) + static_cast<ptrdiff_t>(startCol) * channels;
-        for (int x = 0; x < rowWidth; ++x) {
-            dstRow[x] = static_cast<uint8_t>(std::clamp(colSum[static_cast<size_t>(x)] / count, 0, 255));
+        for (int x = 0; x < colCount; ++x) {
+            size_t off = static_cast<size_t>(x) * static_cast<size_t>(channels);
+            for (int c = 0; c < channels; ++c)
+                dstRow[off + static_cast<size_t>(c)] = static_cast<uint8_t>(
+                    std::clamp(colSum[off + static_cast<size_t>(c)] / count, 0, 255));
         }
     }
 }
@@ -110,8 +165,6 @@ void boxBlur1D(const Bitmap& src, Bitmap& dst, int radius) {
     ThreadPool& pool = ThreadPool::instance();
     int numThreads = pool.threadCount();
 
-    // The vertical pass must read the horizontal pass's output, not src again,
-    // so it needs its own scratch buffer rather than writing directly into dst.
     ScopedBuffer scratch(dst.totalBytes());
     Bitmap horizontalResult;
     horizontalResult.pixels = scratch.get();
@@ -140,8 +193,9 @@ void boxBlur3Pass(Bitmap& bitmap, int gaussianRadius) {
     int w = bitmap.width;
     int h = bitmap.height;
     int ch = bitmap.channels;
+    size_t frameBytes = static_cast<size_t>(w) * static_cast<size_t>(h) * static_cast<size_t>(ch);
 
-    ScopedBuffer tempBuffer(static_cast<size_t>(w) * h * ch);
+    ScopedBuffer tempBuffer(frameBytes);
     Bitmap temp;
     temp.pixels = tempBuffer.get();
     temp.width = w;
@@ -153,7 +207,7 @@ void boxBlur3Pass(Bitmap& bitmap, int gaussianRadius) {
     boxBlur1D(temp, bitmap, boxRadius);
     boxBlur1D(bitmap, temp, boxRadius);
 
-    std::memcpy(bitmap.pixels, temp.pixels, bitmap.totalBytes());
+    std::memcpy(bitmap.pixels, temp.pixels, frameBytes);
 }
 
 } // namespace blur
