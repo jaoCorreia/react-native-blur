@@ -210,6 +210,7 @@ class BackdropBlurView(context: Context) : FrameLayout(context) {
                         val r = max(1, (blurRadius / f).toInt())
                         NativeBlur.applyBlur(bmp, r)
                     }
+                    frame?.bitmap?.recycle()
                     frame = Frame(bmp, src)
                     postInvalidateOnAnimation()
                 } else {
