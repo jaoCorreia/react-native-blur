@@ -10,7 +10,6 @@ import android.graphics.Shader
 import android.os.Build
 import android.util.Log
 import android.view.View
-import android.view.ViewGroup
 import android.widget.FrameLayout
 
 class BlurView(context: Context) : FrameLayout(context) {
@@ -18,7 +17,7 @@ class BlurView(context: Context) : FrameLayout(context) {
     private var overlayColor: Int = Color.TRANSPARENT
     private var cachedBitmap: Bitmap? = null
     private var needsRedraw: Boolean = true
-    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val backgroundPaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     init {
         setWillNotDraw(false)
@@ -28,6 +27,9 @@ class BlurView(context: Context) : FrameLayout(context) {
         if (blurRadius != radius) {
             blurRadius = radius
             needsRedraw = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                applyRenderEffect()
+            }
             invalidate()
         }
     }
@@ -60,16 +62,21 @@ class BlurView(context: Context) : FrameLayout(context) {
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            applyRenderEffect()
+            super.dispatchDraw(canvas)
+            if (overlayColor != Color.TRANSPARENT) {
+                canvas.drawColor(overlayColor)
+            }
+            return
+        }
+
         if (needsRedraw) {
             captureAndBlur()
             needsRedraw = false
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            drawWithRenderEffect(canvas)
-        } else {
-            drawWithCachedBitmap(canvas)
-        }
+        cachedBitmap?.let { canvas.drawBitmap(it, 0f, 0f, backgroundPaint) }
 
         if (overlayColor != Color.TRANSPARENT) {
             canvas.drawColor(overlayColor)
@@ -78,23 +85,15 @@ class BlurView(context: Context) : FrameLayout(context) {
         super.dispatchDraw(canvas)
     }
 
-    // RenderEffect (API 31+) applies to a View's composited output, not to a
-    // Paint — it's set on this View itself so the raw (unblurred) bitmap
-    // drawn below gets blurred by the GPU at composition time.
-    private fun drawWithRenderEffect(canvas: Canvas) {
-        val effect = RenderEffect.createBlurEffect(
-            blurRadius,
-            blurRadius,
-            Shader.TileMode.CLAMP
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun applyRenderEffect() {
+        setRenderEffect(
+            RenderEffect.createBlurEffect(
+                blurRadius,
+                blurRadius,
+                Shader.TileMode.CLAMP
+            )
         )
-        setRenderEffect(effect)
-        drawWithCachedBitmap(canvas)
-    }
-
-    private fun drawWithCachedBitmap(canvas: Canvas) {
-        cachedBitmap?.let {
-            canvas.drawBitmap(it, 0f, 0f, backgroundPaint)
-        }
     }
 
     private fun captureAndBlur() {
@@ -105,14 +104,9 @@ class BlurView(context: Context) : FrameLayout(context) {
         try {
             val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
-
             drawChildContent(canvas)
 
-            val useGPU = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
-            if (!useGPU && NativeBlur.isAvailable() && blurRadius > 0f) {
-                NativeBlur.applyBlur(bitmap, blurRadius.toInt())
-            }
+            NativeBlur.applyBlur(bitmap, blurRadius.toInt())
 
             cachedBitmap?.recycle()
             cachedBitmap = bitmap
@@ -122,7 +116,6 @@ class BlurView(context: Context) : FrameLayout(context) {
     }
 
     private fun drawChildContent(canvas: Canvas) {
-        val childCount = childCount
         for (i in 0 until childCount) {
             val child = getChildAt(i) ?: continue
             canvas.save()
