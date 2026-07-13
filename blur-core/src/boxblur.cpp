@@ -47,7 +47,7 @@ static void boxBlurHorizontal(const Bitmap& src, Bitmap& dst, int radius,
             if (newRight < width) {
                 const uint8_t* p = srcRow + static_cast<ptrdiff_t>(newRight) * channels;
 #if defined(__SSE4_1__) || defined(__AVX2__)
-                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)p));
+                __m128i px = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(*(const int32_t*)p));
                 __m128i s = _mm_loadu_si128((const __m128i*)sum);
                 _mm_storeu_si128((__m128i*)sum, _mm_add_epi32(s, px));
 #elif defined(__ARM_NEON__) || defined(__aarch64__)
@@ -65,7 +65,7 @@ static void boxBlurHorizontal(const Bitmap& src, Bitmap& dst, int radius,
             if (oldLeft >= 0) {
                 const uint8_t* p = srcRow + static_cast<ptrdiff_t>(oldLeft) * channels;
 #if defined(__SSE4_1__) || defined(__AVX2__)
-                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)p));
+                __m128i px = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(*(const int32_t*)p));
                 __m128i s = _mm_loadu_si128((const __m128i*)sum);
                 _mm_storeu_si128((__m128i*)sum, _mm_sub_epi32(s, px));
 #elif defined(__ARM_NEON__) || defined(__aarch64__)
@@ -100,7 +100,7 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
         const uint8_t* row = src.getRowConst(i) + static_cast<ptrdiff_t>(startCol) * channels;
 #if defined(__SSE4_1__) || defined(__AVX2__)
         for (int x = 0; x < rowWidth; x += channels) {
-            __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)(row + x)));
+            __m128i px = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(*(const int32_t*)(row + x)));
             __m128i s = _mm_loadu_si128((const __m128i*)(&colSum[static_cast<size_t>(x)]));
             _mm_storeu_si128((__m128i*)(&colSum[static_cast<size_t>(x)]), _mm_add_epi32(s, px));
         }
@@ -118,7 +118,7 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
 
 #if defined(__SSE4_1__) || defined(__AVX2__)
             for (int x = 0; x < rowWidth; x += channels) {
-                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)(row + x)));
+                __m128i px = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(*(const int32_t*)(row + x)));
                 __m128i s = _mm_loadu_si128((const __m128i*)(&colSum[static_cast<size_t>(x)]));
                 _mm_storeu_si128((__m128i*)(&colSum[static_cast<size_t>(x)]), _mm_add_epi32(s, px));
             }
@@ -134,7 +134,7 @@ static void boxBlurVertical(const Bitmap& src, Bitmap& dst, int radius,
             const uint8_t* row = src.getRowConst(oldTop) + static_cast<ptrdiff_t>(startCol) * channels;
 #if defined(__SSE4_1__) || defined(__AVX2__)
             for (int x = 0; x < rowWidth; x += channels) {
-                __m128i px = _mm_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*)(row + x)));
+                __m128i px = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(*(const int32_t*)(row + x)));
                 __m128i s = _mm_loadu_si128((const __m128i*)(&colSum[static_cast<size_t>(x)]));
                 _mm_storeu_si128((__m128i*)(&colSum[static_cast<size_t>(x)]), _mm_sub_epi32(s, px));
             }
