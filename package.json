@@ -1,6 +1,6 @@
 {
   "name": "react-native-cpp-blur",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "High-performance cross-platform Gaussian blur for React Native with C++/NEON SIMD optimizations",
   "main": "src/index.ts",
   "types": "src/index.ts",

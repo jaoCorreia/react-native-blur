@@ -8,6 +8,7 @@ module.exports = {
         packageImportPath: 'import com.blur.BlurPackage;',
         packageInstance: 'new BlurPackage()',
       },
+      ios: null,
     },
   },
 };
